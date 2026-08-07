@@ -80,9 +80,20 @@ async def test_tool_call_round(
         for chunk in chunks:
             yield chunk
 
+    async def _fake_get_api(hass_, api_id, llm_context):
+        return llm.APIInstance(
+            api=MagicMock(id="assist"),
+            api_prompt="Call tools when asked.",
+            llm_context=llm_context,
+            tools=[mock_tool],
+        )
+
+    # Patch the public helper instead of AssistAPI internals: those moved
+    # between HA 2026.7 (helpers.llm) and 2026.8 (components.llm), while
+    # async_get_api/APIInstance are stable across both.
     with patch(
-        "homeassistant.helpers.llm.AssistAPI._async_get_tools",
-        return_value=[mock_tool],
+        "homeassistant.helpers.llm.async_get_api",
+        side_effect=_fake_get_api,
     ):
         await setup_integration(hass, mock_config_entry_with_conversation)
         mock_openai.chat.completions.create = AsyncMock(
