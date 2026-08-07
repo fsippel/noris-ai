@@ -10,5 +10,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/fsippel/noris-ai/issues",
   "requirements": ["openai>=2.21.0,<3", "voluptuous-openapi==0.4.1"],
-  "version": "0.2.2"
+  "version": "0.3.0"
 }

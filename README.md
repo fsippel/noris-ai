@@ -8,9 +8,6 @@ devices) and an **AI Task** entity (structured or free-text data generation for
 automations), built on the OpenAI-compatible Chat Completions API of the
 gateway.
 
-Only the **`vllm/*`** models are offered in the model picker. Rerankers and
-small draft models are filtered out automatically.
-
 ## Features
 
 - 💬 **Conversation agent** — use it in Assist (voice or text pipelines) to chat
@@ -18,27 +15,32 @@ small draft models are filtered out automatically.
   the model call entities via tool-calling.
 - 🧩 **AI Task entity** — generate free text or structured (JSON) data from
   automations and scripts, e.g. summaries, classifications, sensor values.
-- 🧠 **Reasoning models** — `thinking` output and vLLM `reasoning` /
-  `reasoning_content` fields are surfaced as separate thinking content.
+- ⚡ **Streaming responses** — answers stream into the chat log as they are
+  generated instead of arriving in one block.
+- 🧠 **Reasoning models** — `<think>…</think>` output and vLLM `reasoning` /
+  `reasoning_content` fields are surfaced as separate thinking content, even
+  mid-stream.
+- 🎛️ **Recommended &amp; advanced settings** — sensible defaults out of the box;
+  power users can tune `max_tokens`, `temperature` and `top_p` per agent/task.
+- 🩺 **Diagnostics &amp; reauth** — config entry diagnostics (API key redacted)
+  and a reauth flow when a key expires.
 - 🌍 **Translations** — English and German UI.
 
 ## Requirements
 
 - A Home Assistant instance running **2026.7.0** or newer.
 - An **API key** for ai.noris.de (see below).
-- At least one working `vllm/*` chat model available on your gateway.
+- At least one working chat model available on your gateway.
 
 ## Obtaining an API key
-
-The ai.noris.de gateway authenticates requests with a custom `x-bf-vk` header
-that carries an API key in the form `sk-bf-…`.
 
 1. Get an API key from your ai.noris.de account / administrator.
 2. Copy the full `sk-bf-…` value — you will paste it into the integration.
 
-> **Note:** the key is sent in the `x-bf-vk` header (handled automatically by
-> this integration). It is stored encrypted in Home Assistant's credential
-> store and never logged.
+> **Note:** the integration authenticates with the standard
+> `Authorization: Bearer` header, like any OpenAI-compatible API. The key is
+> stored in Home Assistant's credential store, redacted in diagnostics and
+> never logged.
 
 ## Installation
 
@@ -62,9 +64,25 @@ Copy the `custom_components/noris_ai` folder into your Home Assistant
    `https://ai.noris.de/v1/models`.
 3. Once added, open the integration card and use **Add conversation agent**
    and/or **Add AI task** to create entities:
-   - Pick a `vllm/*` model from the dropdown (loaded live from the gateway).
+   - Pick a model from the dropdown (loaded live from the gateway,
+     default: `vllm/gpt-oss-120b`).
    - For the conversation agent, optionally enable **Control Home Assistant**
      to allow device control via tool-calling.
+   - Keep **Recommended settings** enabled for sensible defaults, or disable
+     it to tune advanced options.
+
+### Advanced options
+
+With *Recommended settings* disabled you can adjust per agent/task:
+
+| Option | Default (conversation) | Default (AI Task) |
+|--------|------------------------|-------------------|
+| `max_tokens` | 3000 | 8000 |
+| `temperature` | 1.0 | 1.0 |
+| `top_p` | 1.0 | 1.0 |
+
+Reasoning models spend part of the token budget on thinking **before** the
+visible answer — keep `max_tokens` generous, or answers may come back empty.
 
 ## Using the conversation agent
 
@@ -174,19 +192,21 @@ script:
 ## Available models
 
 - The model dropdown is populated **live** from `https://ai.noris.de/v1/models`
-  when you add an agent/task.
-- Only `vllm/*` models are listed. Models whose ID contains `reranker` or
-  `harrier` (draft models) are filtered out.
+  when you add an agent/task. `vllm/*` models are listed first.
+- Rerankers, embedding models and small draft models are filtered out — they
+  cannot act as chat/agent models.
 - **Tool-calling** (device control) requires a model that supports function
-  calling. Larger instruct models (e.g. `vllm/gpt-oss-120b`,
-  `vllm/gemma-4-31b-it`) work best.
-- Even temporarily unavailable models remain selectable; availability changes
-  over time and errors are reported cleanly at runtime.
+  calling. Larger instruct models (e.g. `vllm/gpt-oss-120b`) work best.
+- The default model is matched resiliently: if the gateway renames a model
+  with a channel prefix (e.g. `vllm/release/gpt-oss-120b`), the integration
+  still finds it.
 
 ## Notes
 
-- **Authentication:** the gateway uses a custom `x-bf-vk` header instead of the
-  standard `Authorization: Bearer` scheme. This is handled by the integration.
+- **Authentication:** standard `Authorization: Bearer` with your `sk-bf-…`
+  key. For compatibility with older gateway configurations the legacy
+  `x-bf-vk` header is currently still sent alongside; it will be removed in a
+  future release.
 - **TLS:** certificates are verified via Home Assistant's shared HTTP client.
 - **Reasoning models:** `<think>…</think>` output and vLLM `reasoning` /
   `reasoning_content` fields are surfaced as separate thinking content.
@@ -195,11 +215,11 @@ script:
 
 | Symptom | Likely cause / fix |
 |---------|--------------------|
-| **Invalid authentication** during setup | Wrong/expired API key. Re-enter the full `sk-bf-…` value. |
+| **Invalid authentication** during setup | Wrong/expired API key. Re-enter the full `sk-bf-…` value. The integration also starts a reauth flow automatically when a key expires. |
 | **Failed to connect** | Gateway unreachable or network issue. Check connectivity to `ai.noris.de`. |
-| Empty answer from a reasoning model | `max_tokens` too small — the model spent all tokens "thinking". Use a model with a higher token budget or reduce the task complexity. |
+| Empty answer / "increase max_tokens" error | The model spent the whole token budget thinking. Disable *Recommended settings* and raise `max_tokens`. |
 | Tool call fails / unexpected JSON | Some models wrap tool arguments in Markdown fences. The integration strips these automatically; if it still fails, try a different model. |
-| Model not in the dropdown | Only `vllm/*` chat models are shown; rerankers and draft models are hidden by design. |
+| Model not in the dropdown | Rerankers, embedding and draft models are hidden by design. |
 
 ## License
 

@@ -1,0 +1,8 @@
+pytest-homeassistant-custom-component
+openai>=2.21.0,<3
+voluptuous-openapi
+
+# Pulled in by the conversation/ai_task components (manifest dependencies)
+hassil
+home-assistant-intents
+PyTurboJPEG
