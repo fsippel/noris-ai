@@ -1,0 +1,14 @@
+# Deliberately py313, not py314: under py314 `ruff format` applies PEP 758 and
+# rewrites `except (A, B):` into `except A, B:` across config_flow.py. Do not
+# "fix" this without checking that rewrite first.
+target-version = "py313"
+
+[lint]
+select = ["E", "W", "F", "I", "B", "RUF"]
+ignore = ["E501"]
+
+[lint.isort]
+force-sort-within-sections = true
+known-first-party = ["homeassistant", "custom_components", "tests"]
+combine-as-imports = true
+split-on-trailing-comma = false

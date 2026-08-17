@@ -1,0 +1,10 @@
+# Pinned deliberately: this release pins homeassistant==2026.8.2, matching the
+# production instance. Bump only together with the production HA version.
+pytest-homeassistant-custom-component==0.13.356
+ruff==0.16.3
+openai>=2.21.0,<3
+hassil==3.11.0
+home-assistant-intents==2026.7.30
+PyTurboJPEG==1.8.3
+mutagen==1.48.1
+ha-ffmpeg==3.2.2

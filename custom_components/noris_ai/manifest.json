@@ -1,14 +1,27 @@
 {
   "domain": "noris_ai",
   "name": "noris AI (ai.noris.de)",
-  "after_dependencies": ["assist_pipeline", "intent"],
-  "codeowners": ["@fsippel"],
+  "after_dependencies": [
+    "assist_pipeline",
+    "intent"
+  ],
+  "codeowners": [
+    "@fsippel"
+  ],
   "config_flow": true,
-  "dependencies": ["conversation", "ai_task"],
+  "dependencies": [
+    "conversation",
+    "ai_task",
+    "stt",
+    "tts"
+  ],
   "documentation": "https://github.com/fsippel/noris-ai",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/fsippel/noris-ai/issues",
-  "requirements": ["openai>=2.21.0,<3", "voluptuous-openapi==0.4.1"],
-  "version": "0.2.2"
+  "requirements": [
+    "openai>=2.21.0,<3",
+    "voluptuous-openapi==0.4.1"
+  ],
+  "version": "0.5.0"
 }

@@ -5,7 +5,6 @@ from __future__ import annotations
 from json import JSONDecodeError
 
 from homeassistant.components import ai_task, conversation
-from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback

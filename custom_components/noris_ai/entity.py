@@ -119,7 +119,7 @@ def _strip_markdown_fence(text: str) -> str:
     if stripped.startswith("```"):
         # Drop the opening fence line (may include a language tag like "json").
         nl = stripped.find("\n")
-        stripped = stripped[nl + 1:] if nl != -1 else stripped[3:]
+        stripped = stripped[nl + 1 :] if nl != -1 else stripped[3:]
         # Drop a trailing closing fence.
         if stripped.rstrip().endswith("```"):
             stripped = stripped.rstrip()[:-3]
@@ -205,8 +205,13 @@ async def _transform_response(
     yield data
 
 
-class NorisAIEntity(Entity):
-    """Base entity for noris AI."""
+class NorisAISubentryEntity(Entity):
+    """Device identity for an entity backed by a config subentry.
+
+    Every platform in this integration maps one subentry to one device, and that
+    device's identity is the same regardless of what the entity does. Only the
+    identity lives here; behaviour belongs to the subclasses.
+    """
 
     _attr_has_entity_name = True
 
@@ -215,7 +220,7 @@ class NorisAIEntity(Entity):
         entry: NorisAIConfigEntry,
         subentry: ConfigSubentry,
     ) -> None:
-        """Initialize the entity."""
+        """Initialize the entity from its subentry."""
         self.entry = entry
         self.subentry = subentry
         self.model = subentry.data[CONF_MODEL]
@@ -227,6 +232,10 @@ class NorisAIEntity(Entity):
             model=self.model,
             entry_type=dr.DeviceEntryType.SERVICE,
         )
+
+
+class NorisAIEntity(NorisAISubentryEntity):
+    """Base entity for the chat-driven noris AI platforms."""
 
     async def _async_handle_chat_log(
         self,

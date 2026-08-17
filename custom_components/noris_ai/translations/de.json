@@ -49,7 +49,8 @@
       },
       "entry_type": "Konversationsagent",
       "initiate_flow": {
-        "user": "Konversationsagent hinzufügen"
+        "reconfigure": "Konversations-Agent neu konfigurieren",
+        "user": "Konversations-Agent hinzufügen"
       },
       "step": {
         "init": {
@@ -86,6 +87,7 @@
       },
       "entry_type": "KI-Aufgabe",
       "initiate_flow": {
+        "reconfigure": "KI-Aufgabe neu konfigurieren",
         "user": "KI-Aufgabe hinzufügen"
       },
       "step": {
@@ -97,6 +99,74 @@
             "model": "Das vLLM-Modell zur Datengenerierung."
           },
           "description": "KI-Aufgabe konfigurieren"
+        }
+      }
+    },
+    "stt": {
+      "abort": {
+        "cannot_connect": "Verbindung fehlgeschlagen",
+        "entry_not_loaded": "Der Haupteintrag der Integration ist nicht geladen. Bitte stelle sicher, dass die Integration geladen ist, bevor du sie konfigurierst.",
+        "no_audio_models": "Das Gateway bietet derzeit kein Modell an, das Sprache transkribieren kann.",
+        "reconfigure_successful": "Neukonfiguration war erfolgreich",
+        "unknown": "Unerwarteter Fehler"
+      },
+      "entry_type": "Spracherkennung",
+      "initiate_flow": {
+        "reconfigure": "Spracherkennung neu konfigurieren",
+        "user": "Spracherkennung hinzufügen"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "model": "Modell"
+          },
+          "data_description": {
+            "model": "Das vLLM-Modell, das Sprache transkribiert."
+          },
+          "description": "Spracherkennung konfigurieren"
+        },
+        "reconfigure": {
+          "data": {
+            "model": "Modell"
+          },
+          "data_description": {
+            "model": "Das vLLM-Modell, das Sprache transkribiert."
+          },
+          "description": "Ändere das Modell, das Sprache transkribiert."
+        }
+      }
+    },
+    "tts": {
+      "abort": {
+        "cannot_connect": "Verbindung fehlgeschlagen",
+        "entry_not_loaded": "Der Haupteintrag der Integration ist nicht geladen. Bitte stelle sicher, dass die Integration geladen ist, bevor du sie konfigurierst.",
+        "no_speech_models": "Das Gateway bietet derzeit kein Modell an, das Sprache synthetisieren kann.",
+        "reconfigure_successful": "Neukonfiguration war erfolgreich",
+        "unknown": "Unerwarteter Fehler"
+      },
+      "entry_type": "Sprachausgabe",
+      "initiate_flow": {
+        "reconfigure": "Sprachausgabe neu konfigurieren",
+        "user": "Sprachausgabe hinzufügen"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "model": "Modell"
+          },
+          "data_description": {
+            "model": "Das Modell, das Sprache synthetisiert. Die Stimmen unterscheiden sich nach Sprache: die Kokoro-Stimme spricht nur Deutsch."
+          },
+          "description": "Sprachausgabe konfigurieren"
+        },
+        "reconfigure": {
+          "data": {
+            "model": "Modell"
+          },
+          "data_description": {
+            "model": "Das Modell, das Sprache synthetisiert. Die Stimmen unterscheiden sich nach Sprache: die Kokoro-Stimme spricht nur Deutsch."
+          },
+          "description": "Ändere das Modell, das Sprache synthetisiert."
         }
       }
     }

@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-from openai import (
-    AsyncOpenAI,
-    AuthenticationError,
-    OpenAIError,
-    PermissionDeniedError,
-)
+from openai import AsyncOpenAI, AuthenticationError, OpenAIError, PermissionDeniedError
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, Platform
@@ -15,9 +10,30 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.httpx_client import get_async_client
 
-from .const import AUTH_HEADER, BASE_URL
+from .const import (
+    AI_TASK_SUBENTRY_TYPE,
+    AUTH_HEADER,
+    BASE_URL,
+    CONVERSATION_SUBENTRY_TYPE,
+    DEFAULT_AI_TASK_NAME,
+    DEFAULT_CONVERSATION_NAME,
+    DEFAULT_STT_NAME,
+    DEFAULT_TTS_NAME,
+    LOGGER,
+    STT_SUBENTRY_TYPE,
+    TTS_SUBENTRY_TYPE,
+)
 
-PLATFORMS = [Platform.AI_TASK, Platform.CONVERSATION]
+PLATFORMS = [Platform.AI_TASK, Platform.CONVERSATION, Platform.STT, Platform.TTS]
+
+# Subentries created before 1.2 were titled with the raw model id, which left
+# the device card showing no indication of what the device was.
+SUBENTRY_DEFAULT_TITLES = {
+    CONVERSATION_SUBENTRY_TYPE: DEFAULT_CONVERSATION_NAME,
+    AI_TASK_SUBENTRY_TYPE: DEFAULT_AI_TASK_NAME,
+    STT_SUBENTRY_TYPE: DEFAULT_STT_NAME,
+    TTS_SUBENTRY_TYPE: DEFAULT_TTS_NAME,
+}
 
 type NorisAIConfigEntry = ConfigEntry[AsyncOpenAI]
 
@@ -47,6 +63,34 @@ async def _validate_api_key(client: AsyncOpenAI) -> None:
     propagate to the caller.
     """
     await client.with_options(timeout=10.0).models.list()
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: NorisAIConfigEntry) -> bool:
+    """Migrate an old config entry.
+
+    1.1 → 1.2 retitles subentries that still carry the raw model id. A title the
+    user chose themselves is left alone: only titles that look like a gateway
+    model id (``vllm/…``) are replaced. Entity ids are deliberately NOT touched
+    — they may already be referenced by pipelines, automations or dashboards,
+    and Home Assistant does not follow such references.
+    """
+    if entry.minor_version >= 2:
+        return True
+
+    for subentry in entry.subentries.values():
+        default_title = SUBENTRY_DEFAULT_TITLES.get(subentry.subentry_type)
+        if default_title is None or not subentry.title.startswith("vllm/"):
+            continue
+        LOGGER.debug(
+            "Retitling %s subentry from %s to %s",
+            subentry.subentry_type,
+            subentry.title,
+            default_title,
+        )
+        hass.config_entries.async_update_subentry(entry, subentry, title=default_title)
+
+    hass.config_entries.async_update_entry(entry, minor_version=2)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: NorisAIConfigEntry) -> bool:
