@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import httpx
 from openai import (
     AsyncOpenAI,
     AuthenticationError,
@@ -15,7 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.httpx_client import get_async_client
 
-from .const import AUTH_HEADER, BASE_URL
+from .const import AUTH_HEADER, BASE_URL, CONNECT_TIMEOUT, MAX_RETRIES, REQUEST_TIMEOUT
 
 PLATFORMS = [Platform.AI_TASK, Platform.CONVERSATION]
 
@@ -30,12 +31,18 @@ def _create_client(hass: HomeAssistant, api_key: str) -> AsyncOpenAI:
     passed through ``default_headers``. ``api_key`` is still required by the
     SDK and carries the same value; the gateway simply reads ``x-bf-vk``.
     TLS certificates are verified through Home Assistant's shared httpx client.
+
+    ``timeout`` and ``max_retries`` must be passed explicitly. The shared httpx
+    client carries httpx's default timeout, which the SDK reads as "unset" and
+    replaces with its own 600 s default — see ``REQUEST_TIMEOUT``.
     """
     return AsyncOpenAI(
         base_url=BASE_URL,
         api_key=api_key,
         default_headers={AUTH_HEADER: api_key},
         http_client=get_async_client(hass),
+        timeout=httpx.Timeout(REQUEST_TIMEOUT, connect=CONNECT_TIMEOUT),
+        max_retries=MAX_RETRIES,
     )
 
 
