@@ -39,14 +39,53 @@ MAX_TOOL_ITERATIONS = 10
 _THINK_PATTERN = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
 
+def _sanitize_schema(obj: Any) -> Any:
+    """Strip non-JSON-serialisable sentinel values from a converted schema.
+
+    HA 2026.9 replaced ``voluptuous_openapi`` with ``probatio`` internally.
+    Its ``custom_serializer`` (used by ``llm.APIInstance``) returns
+    ``probatio.UNSUPPORTED`` — a bare ``_Unsupported`` sentinel — for any
+    schema construct that is not a HA selector. When ``convert()`` receives
+    this sentinel from the custom_serializer it propagates it as-is, so the
+    entire ``parameters`` dict (or nested sub-values) can be a non-JSON-
+    serialisable object. This causes::
+
+        TypeError: Object of type _Unsupported is not JSON serialisable
+
+    when the OpenAI SDK encodes the chat-completions request body.
+
+    Walk the converted result recursively and keep only JSON-native types
+    (str, int, float, bool, None, dict, list). Any sentinel—whether it wraps
+    the whole schema or hides in a nested value—is silently dropped.
+    """
+    if isinstance(obj, dict):
+        return {
+            k: _sanitize_schema(v)
+            for k, v in obj.items()
+            if isinstance(v, (str, int, float, type(None), dict, list))
+        }
+    if isinstance(obj, list):
+        return [
+            _sanitize_schema(item)
+            for item in obj
+            if isinstance(item, (str, int, float, type(None), dict, list))
+        ]
+    if isinstance(obj, (str, int, float, type(None))):
+        return obj
+    # Non-JSON sentinel (UNSUPPORTED / _Unsupported) — replace with {}
+    return {}
+
+
 def _format_tool(
     tool: llm.Tool,
     custom_serializer: Callable[[Any], Any] | None,
 ) -> ChatCompletionFunctionToolParam:
     """Format tool specification."""
+    parameters = convert(tool.parameters, custom_serializer=custom_serializer)
+    parameters = _sanitize_schema(parameters)
     tool_spec = FunctionDefinition(
         name=tool.name,
-        parameters=convert(tool.parameters, custom_serializer=custom_serializer),
+        parameters=parameters,
     )
     if tool.description:
         tool_spec["description"] = tool.description
@@ -59,7 +98,7 @@ def _format_structure_output(name: str, structure: vol.Schema) -> dict[str, Any]
         "type": "json_schema",
         "json_schema": {
             "name": name or "data",
-            "schema": convert(structure),
+            "schema": _sanitize_schema(convert(structure)),
             "strict": True,
         },
     }
