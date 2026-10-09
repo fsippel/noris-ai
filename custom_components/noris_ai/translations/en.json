@@ -36,17 +36,18 @@
             "name": "Name",
             "model": "Model",
             "llm_hass_api": "Control Home Assistant",
+            "prompt": "Instructions",
             "recommended": "Recommended settings"
           },
           "data_description": {
             "model": "Only vllm/* models run on-premises in the noris data center NBG6; Anthropic models are routed to an external provider.",
-            "recommended": "Disable to configure prompt, token limit, temperature and top_p."
+            "prompt": "Instruct how the LLM should respond. This can be a template.",
+            "recommended": "Disable to configure token limit, temperature and top_p."
           }
         },
         "advanced": {
           "title": "Advanced settings",
           "data": {
-            "prompt": "Instructions",
             "max_tokens": "Maximum tokens",
             "temperature": "Temperature",
             "top_p": "Top P"

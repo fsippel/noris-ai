@@ -288,10 +288,6 @@ class ConversationFlowHandler(NorisAISubentryFlowHandler):
                 default=existing.get(CONF_LLM_HASS_API, default_apis),
             )
         ] = SelectSelector(SelectSelectorConfig(options=hass_apis, multiple=True))
-
-    def _extend_advanced_schema(
-        self, schema: dict[Any, Any], existing: Mapping[str, Any]
-    ) -> None:
         schema[
             vol.Optional(
                 CONF_PROMPT,
@@ -302,6 +298,11 @@ class ConversationFlowHandler(NorisAISubentryFlowHandler):
                 },
             )
         ] = TemplateSelector()
+
+    def _extend_advanced_schema(
+        self, schema: dict[Any, Any], existing: Mapping[str, Any]
+    ) -> None:
+        """Advanced options: token budget, temperature, top_p."""
 
 
 class AITaskFlowHandler(NorisAISubentryFlowHandler):

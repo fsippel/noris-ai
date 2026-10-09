@@ -36,17 +36,18 @@
             "name": "Name",
             "model": "Modell",
             "llm_hass_api": "Home Assistant steuern",
+            "prompt": "Anweisungen",
             "recommended": "Empfohlene Einstellungen"
           },
           "data_description": {
             "model": "Nur vllm/*-Modelle laufen on-premises im noris-Rechenzentrum NBG6; Anthropic-Modelle werden an einen externen Anbieter geleitet.",
-            "recommended": "Deaktivieren, um Prompt, Token-Limit, Temperatur und Top-P anzupassen."
+            "prompt": "Gib an, wie das LLM antworten soll. Dies kann ein Template sein.",
+            "recommended": "Deaktivieren, um Token-Limit, Temperatur und Top-P anzupassen."
           }
         },
         "advanced": {
           "title": "Erweiterte Einstellungen",
           "data": {
-            "prompt": "Anweisungen",
             "max_tokens": "Maximale Tokens",
             "temperature": "Temperatur",
             "top_p": "Top P"
