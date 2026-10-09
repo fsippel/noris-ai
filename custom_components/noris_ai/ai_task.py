@@ -3,19 +3,30 @@
 from __future__ import annotations
 
 from json import JSONDecodeError
+import re
 
 from homeassistant.components import ai_task, conversation
-from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util.json import json_loads
 
 from . import NorisAIConfigEntry
-from .const import AI_TASK_SUBENTRY_TYPE
+from .const import AI_TASK_SUBENTRY_TYPE, RECOMMENDED_AI_TASK_MAX_TOKENS
 from .entity import NorisAIEntity
 
 PARALLEL_UPDATES = 0
+
+_CODE_FENCE_PATTERN = re.compile(
+    r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL
+)
+
+
+def _strip_code_fences(text: str) -> str:
+    """Remove a surrounding markdown code fence, if present."""
+    if match := _CODE_FENCE_PATTERN.match(text.strip()):
+        return match.group(1)
+    return text
 
 
 async def async_setup_entry(
@@ -36,6 +47,7 @@ class NorisAITaskEntity(NorisAIEntity, ai_task.AITaskEntity):
 
     _attr_name = None
     _attr_supported_features = ai_task.AITaskEntityFeature.GENERATE_DATA
+    _recommended_max_tokens = RECOMMENDED_AI_TASK_MAX_TOKENS
 
     async def _async_generate_data(
         self,
@@ -43,9 +55,13 @@ class NorisAITaskEntity(NorisAIEntity, ai_task.AITaskEntity):
         chat_log: conversation.ChatLog,
     ) -> ai_task.GenDataTaskResult:
         """Handle a generate data task."""
-        await self._async_handle_chat_log(chat_log, task.name, task.structure)
+        await self._async_handle_chat_log(
+            chat_log,
+            stream=False,
+            structure_name=task.name,
+            structure=task.structure,
+        )
 
-        # The last assistant message holds the generated answer.
         last = chat_log.content[-1]
         if not isinstance(last, conversation.AssistantContent) or last.content is None:
             raise HomeAssistantError("Unexpected empty response from noris AI")
@@ -58,7 +74,7 @@ class NorisAITaskEntity(NorisAIEntity, ai_task.AITaskEntity):
             )
 
         try:
-            data = json_loads(text)
+            data = json_loads(_strip_code_fences(text))
         except JSONDecodeError as err:
             raise HomeAssistantError(
                 "Error parsing structured response from noris AI"

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 import logging
 from typing import Any
 
-from openai import AsyncOpenAI, AuthenticationError, OpenAIError, PermissionDeniedError
+from openai import AuthenticationError, OpenAIError, PermissionDeniedError
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -17,10 +17,14 @@ from homeassistant.config_entries import (
     ConfigSubentryFlow,
     SubentryFlowResult,
 )
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_MODEL
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_MODEL, CONF_NAME
 from homeassistant.core import callback
 from homeassistant.helpers import llm
 from homeassistant.helpers.selector import (
+    BooleanSelector,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -31,41 +35,23 @@ from homeassistant.helpers.selector import (
 from . import _create_client, _validate_api_key
 from .const import (
     AI_TASK_SUBENTRY_TYPE,
+    CONF_MAX_TOKENS,
     CONF_PROMPT,
+    CONF_RECOMMENDED,
+    CONF_TEMPERATURE,
+    CONF_TOP_P,
     CONVERSATION_SUBENTRY_TYPE,
     DOMAIN,
-    RECOMMENDED_CONVERSATION_OPTIONS,
+    RECOMMENDED_AI_TASK_MAX_TOKENS,
+    RECOMMENDED_CONVERSATION_MAX_TOKENS,
+    RECOMMENDED_TEMPERATURE,
+    RECOMMENDED_TOP_P,
 )
+from .models import async_get_model_options, default_model
 
 _LOGGER = logging.getLogger(__name__)
 
 STEP_API_KEY_DATA_SCHEMA = vol.Schema({vol.Required(CONF_API_KEY): str})
-
-
-def _is_selectable_model(model_id: str) -> bool:
-    """Return True for vLLM chat models worth offering to the user.
-
-    Only ``vllm/*`` models are exposed. Rerankers and the tiny
-    ``harrier-oss`` draft model are not usable as chat/agent models.
-    """
-    if not model_id.startswith("vllm/"):
-        return False
-    lowered = model_id.lower()
-    if "reranker" in lowered:
-        return False
-    if "harrier" in lowered:
-        return False
-    return True
-
-
-async def _fetch_model_options(entry: ConfigEntry) -> list[SelectOptionDict]:
-    """Fetch and filter selectable models from the gateway."""
-    client: AsyncOpenAI = entry.runtime_data
-    return [
-        SelectOptionDict(value=model.id, label=model.id)
-        async for model in client.with_options(timeout=10.0).models.list()
-        if _is_selectable_model(model.id)
-    ]
 
 
 class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -85,6 +71,20 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
             AI_TASK_SUBENTRY_TYPE: AITaskFlowHandler,
         }
 
+    async def _async_validate_key(self, api_key: str) -> dict[str, str]:
+        """Validate a key, returning a config-flow errors dict."""
+        client = _create_client(self.hass, api_key)
+        try:
+            await _validate_api_key(client)
+        except (AuthenticationError, PermissionDeniedError):
+            return {"base": "invalid_auth"}
+        except OpenAIError:
+            return {"base": "cannot_connect"}
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Unexpected exception")
+            return {"base": "unknown"}
+        return {}
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -92,25 +92,12 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             self._async_abort_entries_match(user_input)
-            client = _create_client(self.hass, user_input[CONF_API_KEY])
-            try:
-                await _validate_api_key(client)
-            except (AuthenticationError, PermissionDeniedError):
-                errors["base"] = "invalid_auth"
-            except OpenAIError:
-                errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
-            else:
-                return self.async_create_entry(
-                    title="noris AI",
-                    data=user_input,
-                )
+            if not (errors := await self._async_validate_key(
+                user_input[CONF_API_KEY]
+            )):
+                return self.async_create_entry(title="noris AI", data=user_input)
         return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_API_KEY_DATA_SCHEMA,
-            errors=errors,
+            step_id="user", data_schema=STEP_API_KEY_DATA_SCHEMA, errors=errors
         )
 
     async def async_step_reauth(
@@ -125,20 +112,11 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
         """Confirm reauthentication dialog."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            client = _create_client(self.hass, user_input[CONF_API_KEY])
-            try:
-                await _validate_api_key(client)
-            except (AuthenticationError, PermissionDeniedError):
-                errors["base"] = "invalid_auth"
-            except OpenAIError:
-                errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
-            else:
+            if not (errors := await self._async_validate_key(
+                user_input[CONF_API_KEY]
+            )):
                 return self.async_update_reload_and_abort(
-                    self._get_reauth_entry(),
-                    data_updates=user_input,
+                    self._get_reauth_entry(), data_updates=user_input
                 )
         return self.async_show_form(
             step_id="reauth_confirm",
@@ -146,188 +124,189 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Reconfigure the API key on an existing entry."""
-        errors: dict[str, str] = {}
-        entry = self._get_reconfigure_entry()
-        if user_input is not None:
-            self._async_abort_entries_match(user_input)
-            client = _create_client(self.hass, user_input[CONF_API_KEY])
-            try:
-                await _validate_api_key(client)
-            except (AuthenticationError, PermissionDeniedError):
-                errors["base"] = "invalid_auth"
-            except OpenAIError:
-                errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
-            else:
-                return self.async_update_reload_and_abort(
-                    entry, data_updates=user_input
-                )
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=self.add_suggested_values_to_schema(
-                STEP_API_KEY_DATA_SCHEMA, user_input or entry.data
-            ),
-            errors=errors,
-        )
 
+class NorisAISubentryFlowHandler(ConfigSubentryFlow):
+    """Shared logic for conversation and AI task subentry flows."""
 
-class ConversationFlowHandler(ConfigSubentryFlow):
-    """Handle the conversation agent subentry flow."""
+    subentry_type: str
+    default_name: str
+    recommended_max_tokens: int
+
+    def __init__(self) -> None:
+        """Initialize the subentry flow."""
+        self._data: dict[str, Any] = {}
+        self._name: str | None = None
+
+    @property
+    def _is_new(self) -> bool:
+        return self.source == "user"
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """User flow to create a conversation agent."""
+        """Create a new subentry."""
+        return await self.async_step_init(user_input)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Reconfigure an existing subentry."""
         return await self.async_step_init(user_input)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Manage conversation agent configuration."""
-        if self._get_entry().state is not ConfigEntryState.LOADED:
+        """First step: name (new only), model, recommended toggle."""
+        entry = self._get_entry()
+        if entry.state is not ConfigEntryState.LOADED:
             return self.async_abort(reason="entry_not_loaded")
 
         if user_input is not None:
+            self._name = user_input.pop(CONF_NAME, None)
             if not user_input.get(CONF_LLM_HASS_API):
                 user_input.pop(CONF_LLM_HASS_API, None)
-            return self.async_create_entry(
-                title=user_input[CONF_MODEL], data=user_input
-            )
+            self._data = user_input
+            if user_input[CONF_RECOMMENDED]:
+                return await self._async_finish()
+            return await self.async_step_advanced()
 
         try:
-            model_options = await _fetch_model_options(self._get_entry())
+            model_options = await async_get_model_options(entry.runtime_data)
         except OpenAIError:
             return self.async_abort(reason="cannot_connect")
         except Exception:  # noqa: BLE001
             _LOGGER.exception("Unexpected exception")
             return self.async_abort(reason="unknown")
 
-        hass_apis: list[SelectOptionDict] = [
-            SelectOptionDict(label=api.name, value=api.id)
-            for api in llm.async_get_apis(self.hass)
-        ]
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_MODEL): SelectSelector(
-                        SelectSelectorConfig(
-                            options=model_options,
-                            mode=SelectSelectorMode.DROPDOWN,
-                            sort=True,
-                        ),
-                    ),
-                    vol.Optional(
-                        CONF_PROMPT,
-                        description={
-                            "suggested_value": RECOMMENDED_CONVERSATION_OPTIONS[
-                                CONF_PROMPT
-                            ]
-                        },
-                    ): TemplateSelector(),
-                    vol.Optional(
-                        CONF_LLM_HASS_API,
-                        default=RECOMMENDED_CONVERSATION_OPTIONS[CONF_LLM_HASS_API],
-                    ): SelectSelector(
-                        SelectSelectorConfig(options=hass_apis, multiple=True)
-                    ),
-                }
-            ),
+        existing: Mapping[str, Any] = (
+            self._get_reconfigure_subentry().data if not self._is_new else {}
         )
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Reconfigure a conversation agent (prompt + LLM APIs; model is fixed)."""
-        subentry = self._get_reconfigure_subentry()
-        existing = subentry.data
-
-        if user_input is not None:
-            if not user_input.get(CONF_LLM_HASS_API):
-                user_input.pop(CONF_LLM_HASS_API, None)
-            user_input[CONF_MODEL] = existing[CONF_MODEL]
-            return self.async_update_and_abort(
-                self._get_entry(), subentry, data=user_input
+        schema: dict[Any, Any] = {}
+        if self._is_new:
+            schema[vol.Required(CONF_NAME, default=self.default_name)] = str
+        schema[
+            vol.Required(
+                CONF_MODEL,
+                default=existing.get(CONF_MODEL) or default_model(model_options),
             )
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=model_options,
+                mode=SelectSelectorMode.DROPDOWN,
+                sort=False,
+            )
+        )
+        self._extend_init_schema(schema, existing)
+        schema[
+            vol.Required(
+                CONF_RECOMMENDED, default=existing.get(CONF_RECOMMENDED, True)
+            )
+        ] = BooleanSelector()
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
 
-        hass_apis: list[SelectOptionDict] = [
-            SelectOptionDict(label=api.name, value=api.id)
-            for api in llm.async_get_apis(self.hass)
-        ]
-        return self.async_show_form(
-            step_id="reconfigure",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_PROMPT,
-                        description={
-                            "suggested_value": existing.get(
-                                CONF_PROMPT,
-                                RECOMMENDED_CONVERSATION_OPTIONS[CONF_PROMPT],
-                            )
-                        },
-                    ): TemplateSelector(),
-                    vol.Optional(
-                        CONF_LLM_HASS_API,
-                        default=existing.get(
-                            CONF_LLM_HASS_API,
-                            RECOMMENDED_CONVERSATION_OPTIONS[CONF_LLM_HASS_API],
-                        ),
-                    ): SelectSelector(
-                        SelectSelectorConfig(options=hass_apis, multiple=True)
+    def _extend_init_schema(
+        self, schema: dict[Any, Any], existing: Mapping[str, Any]
+    ) -> None:
+        """Hook for subclasses to add fields to the init step."""
+
+    async def async_step_advanced(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Advanced options when recommended settings are disabled."""
+        if user_input is not None:
+            self._data.update(user_input)
+            return await self._async_finish()
+
+        existing: Mapping[str, Any] = (
+            self._get_reconfigure_subentry().data if not self._is_new else {}
+        )
+        schema: dict[Any, Any] = {}
+        self._extend_advanced_schema(schema, existing)
+        schema.update(
+            {
+                vol.Required(
+                    CONF_MAX_TOKENS,
+                    default=existing.get(
+                        CONF_MAX_TOKENS, self.recommended_max_tokens
                     ),
-                }
-            ),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=100, max=128000, step=1, mode=NumberSelectorMode.BOX
+                    )
+                ),
+                vol.Required(
+                    CONF_TEMPERATURE,
+                    default=existing.get(CONF_TEMPERATURE, RECOMMENDED_TEMPERATURE),
+                ): NumberSelector(NumberSelectorConfig(min=0, max=2, step=0.05)),
+                vol.Required(
+                    CONF_TOP_P,
+                    default=existing.get(CONF_TOP_P, RECOMMENDED_TOP_P),
+                ): NumberSelector(NumberSelectorConfig(min=0, max=1, step=0.05)),
+            }
+        )
+        return self.async_show_form(
+            step_id="advanced", data_schema=vol.Schema(schema)
         )
 
+    def _extend_advanced_schema(
+        self, schema: dict[Any, Any], existing: Mapping[str, Any]
+    ) -> None:
+        """Hook for subclasses to add fields to the advanced step."""
 
-class AITaskFlowHandler(ConfigSubentryFlow):
-    """Handle the AI Task subentry flow."""
-
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """User flow to create an AI Task entity."""
-        return await self.async_step_init(user_input)
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """Manage AI Task configuration."""
-        if self._get_entry().state is not ConfigEntryState.LOADED:
-            return self.async_abort(reason="entry_not_loaded")
-
-        if user_input is not None:
+    async def _async_finish(self) -> SubentryFlowResult:
+        # NumberSelector returns floats; keep the token budget an int.
+        if CONF_MAX_TOKENS in self._data:
+            self._data[CONF_MAX_TOKENS] = int(self._data[CONF_MAX_TOKENS])
+        if self._is_new:
             return self.async_create_entry(
-                title=user_input[CONF_MODEL], data=user_input
+                title=self._name or self.default_name, data=self._data
             )
-
-        try:
-            model_options = await _fetch_model_options(self._get_entry())
-        except OpenAIError:
-            return self.async_abort(reason="cannot_connect")
-        except Exception:  # noqa: BLE001
-            _LOGGER.exception("Unexpected exception")
-            return self.async_abort(reason="unknown")
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_MODEL): SelectSelector(
-                        SelectSelectorConfig(
-                            options=model_options,
-                            mode=SelectSelectorMode.DROPDOWN,
-                            sort=True,
-                        ),
-                    ),
-                }
-            ),
+        return self.async_update_and_abort(
+            self._get_entry(), self._get_reconfigure_subentry(), data=self._data
         )
+
+
+class ConversationFlowHandler(NorisAISubentryFlowHandler):
+    """Subentry flow for conversation agents."""
+
+    subentry_type = CONVERSATION_SUBENTRY_TYPE
+    default_name = "noris AI Conversation"
+    recommended_max_tokens = RECOMMENDED_CONVERSATION_MAX_TOKENS
+
+    def _extend_init_schema(
+        self, schema: dict[Any, Any], existing: Mapping[str, Any]
+    ) -> None:
+        hass_apis: list[SelectOptionDict] = [
+            SelectOptionDict(label=api.name, value=api.id)
+            for api in llm.async_get_apis(self.hass)
+        ]
+        default_apis = [llm.LLM_API_ASSIST] if self._is_new else []
+        schema[
+            vol.Optional(
+                CONF_LLM_HASS_API,
+                default=existing.get(CONF_LLM_HASS_API, default_apis),
+            )
+        ] = SelectSelector(SelectSelectorConfig(options=hass_apis, multiple=True))
+
+    def _extend_advanced_schema(
+        self, schema: dict[Any, Any], existing: Mapping[str, Any]
+    ) -> None:
+        schema[
+            vol.Optional(
+                CONF_PROMPT,
+                description={
+                    "suggested_value": existing.get(
+                        CONF_PROMPT, llm.DEFAULT_INSTRUCTIONS_PROMPT
+                    )
+                },
+            )
+        ] = TemplateSelector()
+
+
+class AITaskFlowHandler(NorisAISubentryFlowHandler):
+    """Subentry flow for AI task entities."""
+
+    subentry_type = AI_TASK_SUBENTRY_TYPE
+    default_name = "noris AI Task"
+    recommended_max_tokens = RECOMMENDED_AI_TASK_MAX_TOKENS

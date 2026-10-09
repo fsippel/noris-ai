@@ -1,103 +1,103 @@
 {
   "config": {
-    "abort": {
-      "already_configured": "Dienst ist bereits konfiguriert",
-      "reauth_successful": "Erneute Authentifizierung war erfolgreich",
-      "reconfigure_successful": "Neukonfiguration war erfolgreich"
-    },
-    "error": {
-      "cannot_connect": "Verbindung fehlgeschlagen",
-      "invalid_auth": "Ungültige Authentifizierung",
-      "unknown": "Unerwarteter Fehler"
-    },
     "step": {
       "user": {
-        "data": {
-          "api_key": "API-Schlüssel"
-        },
+        "data": { "api_key": "API-Schlüssel" },
         "data_description": {
-          "api_key": "Dein ai.noris.de API-Schlüssel (der 'sk-bf-...'-Wert, der im x-bf-vk-Header gesendet wird)."
+          "api_key": "Dein ai.noris.de-Schlüssel (sk-bf-…). Er wird als Standard-Bearer-Token gesendet."
         }
       },
       "reauth_confirm": {
-        "data": {
-          "api_key": "API-Schlüssel"
-        },
-        "data_description": {
-          "api_key": "Dein ai.noris.de API-Schlüssel (der 'sk-bf-...'-Wert, der im x-bf-vk-Header gesendet wird)."
-        },
-        "description": "Der noris AI API-Schlüssel ist nicht mehr gültig. Bitte gib einen neuen ein."
-      },
-      "reconfigure": {
-        "data": {
-          "api_key": "API-Schlüssel"
-        },
-        "data_description": {
-          "api_key": "Dein ai.noris.de API-Schlüssel (der 'sk-bf-...'-Wert, der im x-bf-vk-Header gesendet wird)."
-        },
-        "description": "Aktualisiere den API-Schlüssel für die Authentifizierung bei ai.noris.de."
+        "title": "noris AI neu authentifizieren",
+        "description": "Der API-Schlüssel für ai.noris.de ist nicht mehr gültig. Gib einen neuen Schlüssel ein, um fortzufahren.",
+        "data": { "api_key": "API-Schlüssel" }
       }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zu ai.noris.de fehlgeschlagen",
+      "invalid_auth": "Ungültiger API-Schlüssel",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "abort": {
+      "already_configured": "Dieser API-Schlüssel ist bereits eingerichtet",
+      "reauth_successful": "Neu-Authentifizierung erfolgreich"
     }
   },
   "config_subentries": {
     "conversation": {
-      "abort": {
-        "cannot_connect": "Verbindung fehlgeschlagen",
-        "entry_not_loaded": "Der Haupteintrag der Integration ist nicht geladen. Bitte stelle sicher, dass die Integration geladen ist, bevor du sie konfigurierst.",
-        "reconfigure_successful": "Neukonfiguration war erfolgreich",
-        "unknown": "Unerwarteter Fehler"
-      },
-      "entry_type": "Konversationsagent",
       "initiate_flow": {
-        "user": "Konversationsagent hinzufügen"
+        "user": "Conversation-Agent hinzufügen",
+        "reconfigure": "Conversation-Agent neu konfigurieren"
       },
+      "entry_type": "Conversation-Agent",
       "step": {
         "init": {
           "data": {
-            "llm_hass_api": "Home Assistant steuern",
+            "name": "Name",
             "model": "Modell",
-            "prompt": "Anweisungen"
-          },
-          "data_description": {
-            "llm_hass_api": "Wähle aus, welche Werkzeuge das Modell nutzen darf, um mit deinen Geräten und Entitäten zu interagieren.",
-            "model": "Das vLLM-Modell für den Konversationsagenten.",
-            "prompt": "Lege fest, wie das LLM antworten soll. Dies kann ein Template sein."
-          },
-          "description": "Konversationsagent konfigurieren"
-        },
-        "reconfigure": {
-          "data": {
             "llm_hass_api": "Home Assistant steuern",
-            "prompt": "Anweisungen"
+            "recommended": "Empfohlene Einstellungen"
           },
           "data_description": {
-            "llm_hass_api": "Wähle aus, welche Werkzeuge das Modell nutzen darf, um mit deinen Geräten und Entitäten zu interagieren.",
-            "prompt": "Lege fest, wie das LLM antworten soll. Dies kann ein Template sein."
+            "model": "Nur vllm/*-Modelle laufen on-premises im noris-Rechenzentrum NBG6; Anthropic-Modelle werden an einen externen Anbieter geleitet.",
+            "recommended": "Deaktivieren, um Prompt, Token-Limit, Temperatur und Top-P anzupassen."
+          }
+        },
+        "advanced": {
+          "title": "Erweiterte Einstellungen",
+          "data": {
+            "prompt": "Anweisungen",
+            "max_tokens": "Maximale Tokens",
+            "temperature": "Temperatur",
+            "top_p": "Top P"
           },
-          "description": "Aktualisiere den Prompt und die Home Assistant LLM-APIs für diesen Konversationsagenten. Erstelle einen neuen Agenten, um ein anderes Modell zu verwenden."
+          "data_description": {
+            "max_tokens": "Reasoning-Modelle verbrauchen Tokens fürs Denken; ein zu kleines Limit führt zu leeren Antworten."
+          }
         }
+      },
+      "abort": {
+        "entry_not_loaded": "Die Integration ist nicht geladen",
+        "cannot_connect": "Modell-Liste konnte nicht geladen werden",
+        "unknown": "Unerwarteter Fehler",
+        "reconfigure_successful": "Konfiguration wurde aktualisiert"
       }
     },
     "ai_task_data": {
-      "abort": {
-        "cannot_connect": "Verbindung fehlgeschlagen",
-        "entry_not_loaded": "Der Haupteintrag der Integration ist nicht geladen. Bitte stelle sicher, dass die Integration geladen ist, bevor du sie konfigurierst.",
-        "unknown": "Unerwarteter Fehler"
-      },
-      "entry_type": "KI-Aufgabe",
       "initiate_flow": {
-        "user": "KI-Aufgabe hinzufügen"
+        "user": "AI Task hinzufügen",
+        "reconfigure": "AI Task neu konfigurieren"
       },
+      "entry_type": "AI Task",
       "step": {
         "init": {
           "data": {
-            "model": "Modell"
+            "name": "Name",
+            "model": "Modell",
+            "recommended": "Empfohlene Einstellungen"
           },
           "data_description": {
-            "model": "Das vLLM-Modell zur Datengenerierung."
+            "model": "Nur vllm/*-Modelle laufen on-premises im noris-Rechenzentrum NBG6; Anthropic-Modelle werden an einen externen Anbieter geleitet.",
+            "recommended": "Deaktivieren, um Token-Limit, Temperatur und Top-P anzupassen."
+          }
+        },
+        "advanced": {
+          "title": "Erweiterte Einstellungen",
+          "data": {
+            "max_tokens": "Maximale Tokens",
+            "temperature": "Temperatur",
+            "top_p": "Top P"
           },
-          "description": "KI-Aufgabe konfigurieren"
+          "data_description": {
+            "max_tokens": "Reasoning-Modelle verbrauchen Tokens fürs Denken; ein zu kleines Limit führt zu leeren Antworten."
+          }
         }
+      },
+      "abort": {
+        "entry_not_loaded": "Die Integration ist nicht geladen",
+        "cannot_connect": "Modell-Liste konnte nicht geladen werden",
+        "unknown": "Unerwarteter Fehler",
+        "reconfigure_successful": "Konfiguration wurde aktualisiert"
       }
     }
   }
