@@ -228,13 +228,45 @@ def _sanitize_schema(obj: Any) -> Any:
     return {}
 
 
+def _safe_convert(
+    schema: vol.Schema,
+    custom_serializer: Callable[[Any], Any] | None,
+) -> dict[str, Any]:
+    """Convert a voluptuous schema to a JSON-schema dict, tolerating crashes.
+
+    HA 2026.9 replaced voluptuous_openapi with probatio internally. The
+    custom_serializer from llm.APIInstance returns probatio.UNSUPPORTED
+    sentinels which can make voluptuous_openapi.convert() raise NameError
+    or TypeError before our _sanitize_schema ever sees the result. Catch
+    that and fall back to converting without the custom_serializer, then
+    sanitise whichever result we get.
+    """
+    try:
+        result = convert(schema, custom_serializer=custom_serializer)
+    except Exception:
+        LOGGER.warning(
+            "voluptuous_openapi.convert crashed with custom_serializer, "
+            "retrying without it",
+            exc_info=True,
+        )
+        try:
+            result = convert(schema)
+        except Exception:
+            LOGGER.warning(
+                "voluptuous_openapi.convert crashed without custom_serializer "
+                "too, using empty schema",
+                exc_info=True,
+            )
+            return {}
+    return _sanitize_schema(result)
+
+
 def _format_tool(
     tool: llm.Tool,
     custom_serializer: Callable[[Any], Any] | None,
 ) -> ChatCompletionFunctionToolParam:
     """Format tool specification."""
-    parameters = convert(tool.parameters, custom_serializer=custom_serializer)
-    parameters = _sanitize_schema(parameters)
+    parameters = _safe_convert(tool.parameters, custom_serializer)
     tool_spec = FunctionDefinition(
         name=tool.name,
         parameters=parameters,
@@ -300,7 +332,7 @@ def _format_structured_output(name: str, structure: vol.Schema) -> dict[str, Any
         "type": "json_schema",
         "json_schema": {
             "name": name or "data",
-            "schema": _sanitize_schema(convert(structure)),
+            "schema": _safe_convert(structure, None),
             "strict": True,
         },
     }
