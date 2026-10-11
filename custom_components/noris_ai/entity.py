@@ -410,6 +410,11 @@ class NorisAIEntity(Entity):
             ),
             "top_p": float(self._get_option(CONF_TOP_P, RECOMMENDED_TOP_P)),
             "user": chat_log.conversation_id,
+            # Disable reasoning/thinking for faster responses. Reasoning
+            # models (Qwen3, GPT-OSS) spend tokens on internal deliberation
+            # before answering, which triples latency without improving
+            # voice-assistant quality.
+            "chat_template_kwargs": {"enable_thinking": False},
         }
 
         if chat_log.llm_api:
