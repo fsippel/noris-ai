@@ -413,7 +413,11 @@ class NorisAIEntity(Entity):
             "user": chat_log.conversation_id,
         }
         if not self._get_option(CONF_ENABLE_REASONING, False):
-            model_args["chat_template_kwargs"] = {"enable_thinking": False}
+            # OpenAI SDK >= 3.x rejects unknown kwargs; pass via extra_body
+            # which the gateway forwards to the vLLM chat template.
+            model_args["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
 
         if chat_log.llm_api:
             model_args["tools"] = [
