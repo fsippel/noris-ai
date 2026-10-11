@@ -20,11 +20,33 @@ def is_selectable_model(model_id: str) -> bool:
     return not any(part in lowered for part in _EXCLUDED_SUBSTRINGS)
 
 
+def _channel_from_id(model_id: str) -> str | None:
+    """Extract the deployment channel from a model id.
+
+    Model ids follow the pattern ``vllm/<channel>/<slug>`` (e.g.
+    ``vllm/release/qwen3.8-27b``, ``vllm/qsu/glm-5-3``).  The channel
+    distinguishes production (``release``) from staging (``qsu``)
+    deployments that share the same display name.
+    """
+    parts = model_id.split("/")
+    if len(parts) >= 3 and parts[0] == "vllm":
+        return parts[1]
+    return None
+
+
 def model_label(model: Model) -> str:
-    """Human-readable label: display name if the gateway provides one."""
+    """Human-readable label with channel disambiguation.
+
+    The gateway serves the same model under multiple channels (e.g.
+    ``release`` and ``qsu``) with identical display names.  Appending the
+    channel prevents ambiguous duplicates in the model picker.
+    """
     extras = model.model_extra or {}
     name = extras.get("name")
     if isinstance(name, str) and name.strip():
+        channel = _channel_from_id(model.id)
+        if channel:
+            return f"{name} ({channel})"
         return name
     return model.id
 
