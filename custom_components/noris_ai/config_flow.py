@@ -40,6 +40,7 @@ from .const import (
     CONF_RECOMMENDED,
     CONF_TEMPERATURE,
     CONF_TOP_P,
+    CONF_ENABLE_REASONING,
     CONVERSATION_SUBENTRY_TYPE,
     DOMAIN,
     RECOMMENDED_AI_TASK_MAX_TOKENS,
@@ -243,6 +244,10 @@ class NorisAISubentryFlowHandler(ConfigSubentryFlow):
                     CONF_TOP_P,
                     default=existing.get(CONF_TOP_P, RECOMMENDED_TOP_P),
                 ): NumberSelector(NumberSelectorConfig(min=0, max=1, step=0.05)),
+                vol.Required(
+                    CONF_ENABLE_REASONING,
+                    default=existing.get(CONF_ENABLE_REASONING, False),
+                ): BooleanSelector(),
             }
         )
         return self.async_show_form(

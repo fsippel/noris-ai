@@ -42,6 +42,7 @@ from .const import (
     CONF_RECOMMENDED,
     CONF_TEMPERATURE,
     CONF_TOP_P,
+    CONF_ENABLE_REASONING,
     DOMAIN,
     LOGGER,
     RECOMMENDED_TEMPERATURE,
@@ -410,12 +411,9 @@ class NorisAIEntity(Entity):
             ),
             "top_p": float(self._get_option(CONF_TOP_P, RECOMMENDED_TOP_P)),
             "user": chat_log.conversation_id,
-            # Disable reasoning/thinking for faster responses. Reasoning
-            # models (Qwen3, GPT-OSS) spend tokens on internal deliberation
-            # before answering, which triples latency without improving
-            # voice-assistant quality.
-            "chat_template_kwargs": {"enable_thinking": False},
         }
+        if not self._get_option(CONF_ENABLE_REASONING, False):
+            model_args["chat_template_kwargs"] = {"enable_thinking": False}
 
         if chat_log.llm_api:
             model_args["tools"] = [

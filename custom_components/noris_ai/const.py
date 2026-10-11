@@ -18,6 +18,7 @@ CONF_RECOMMENDED = "recommended"
 CONF_MAX_TOKENS = "max_tokens"
 CONF_TEMPERATURE = "temperature"
 CONF_TOP_P = "top_p"
+CONF_ENABLE_REASONING = "enable_reasoning"
 
 # Reasoning models spend tokens on thinking before answering; too small a
 # budget yields empty content with finish_reason == "length".
