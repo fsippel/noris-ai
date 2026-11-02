@@ -81,6 +81,7 @@ async def test_entity_is_created(
     await setup_integration(hass, mock_config_entry)
     entity = _entity(hass, mock_config_entry)
 
+    assert "de" in entity.supported_languages
     assert "de-DE" in entity.supported_languages
     assert entity.supported_formats == [stt.AudioFormats.WAV]
     assert entity.supported_codecs == [stt.AudioCodecs.PCM]

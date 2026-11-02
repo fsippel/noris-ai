@@ -73,7 +73,20 @@ AUDIO_MODEL_PATTERN = re.compile(
 # Voxtral's documented languages, as BCP-47 tags. Deliberately not the ~130
 # languages other cloud engines advertise: claiming unsupported languages
 # produces confident, wrong transcripts instead of an honest failure to match.
+#
+# The bare ISO-639-1 codes come first because an Assist pipeline passes its
+# pipeline language ("de"), not a regional tag, as the STT metadata language —
+# a region-only list makes every pipeline run fail check_metadata with
+# "provider does not support input metadata".
 STT_SUPPORTED_LANGUAGES = [
+    "de",
+    "en",
+    "es",
+    "fr",
+    "it",
+    "nl",
+    "pt",
+    "hi",
     "de-DE",
     "de-AT",
     "de-CH",
