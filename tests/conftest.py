@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from openai.types import Model
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.noris_ai.const import (
     AI_TASK_SUBENTRY_TYPE,
+    CONF_RECOMMENDED,
     CONVERSATION_SUBENTRY_TYPE,
     DEFAULT_AI_TASK_NAME,
     DEFAULT_CONVERSATION_NAME,
+    DEFAULT_MODEL,
     DEFAULT_STT_NAME,
     DEFAULT_TTS_NAME,
     DOMAIN,
@@ -35,6 +38,16 @@ SPEECH_MODEL = "Cosyvoice3/release/cosyvoice3-0.5b-rl"
 def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
     """Enable loading of this custom integration in every test."""
     return
+
+
+@pytest.fixture(autouse=True)
+async def setup_homeassistant_component(hass: HomeAssistant) -> None:
+    """Set up the homeassistant component.
+
+    The conversation component (a manifest dependency of noris_ai) needs the
+    exposed-entities registry that the homeassistant component provides.
+    """
+    assert await async_setup_component(hass, "homeassistant", {})
 
 
 @pytest.fixture
@@ -75,13 +88,19 @@ def fake_model(
 class FakeModelList:
     """Stand-in for the SDK's AsyncPaginator: awaitable and async-iterable.
 
-    ``_validate_api_key`` awaits ``models.list()`` while ``_fetch_model_options``
-    iterates it, so the fake has to support both.
+    ``_validate_api_key`` and ``async_get_model_options`` await ``models.list()``
+    and then read ``.data``, while older call sites iterated it directly, so the
+    fake supports both shapes.
     """
 
     def __init__(self, models: list[Any]) -> None:
         """Store the models this paginator yields."""
         self._models = models
+
+    @property
+    def data(self) -> list[Any]:
+        """Return the model list the SDK exposes on a page object."""
+        return self._models
 
     def __await__(self):
         """Allow ``await client.models.list()``."""
@@ -102,15 +121,32 @@ class FakeModelList:
 
 
 @pytest.fixture
-def default_models() -> list[Any]:
-    """Return a model catalog resembling the live gateway."""
+def mock_models() -> list[Model]:
+    """Gateway model list: usable, external, and filtered-out entries."""
     return [
-        fake_model(CHAT_MODEL),
-        fake_model("vllm/qsu/glm-5-2"),
-        fake_model(
-            "vllm/qsu/voxtral-small-24b-2507",
-            hugging_face_id="mistralai/Voxtral-Small-24B-2507",
+        Model(id="vllm/gpt-oss-120b", created=0, object="model", owned_by="vllm"),
+        Model(id="vllm/qwen3.6-27b", created=0, object="model", owned_by="vllm"),
+        Model(id="vllm/release/glm-5-2", created=0, object="model", owned_by="vllm"),
+        Model(id="vllm/bge-reranker-v2-m3", created=0, object="model", owned_by="vllm"),
+        Model(
+            id="vllm/harrier-oss-v1-0.6b", created=0, object="model", owned_by="vllm"
         ),
+        Model.model_construct(
+            id="anthropic/claude-sonnet-5",
+            created=0,
+            object="model",
+            owned_by="anthropic",
+            name="Claude Sonnet 5",
+        ),
+    ]
+
+
+@pytest.fixture
+def default_models(mock_models: list[Model]) -> list[Any]:
+    """Return the chat catalog plus the audio and speech models."""
+    return [
+        *mock_models,
+        fake_model(AUDIO_MODEL, hugging_face_id="mistralai/Voxtral-Small-24B-2507"),
         fake_model(SPEECH_MODEL),
         fake_model("Kokoro-TTS/release/kokoro-tts-german-martin"),
         # Deliberately NOT ids the legacy substring fallback ("reranker" /
@@ -131,7 +167,8 @@ def mock_client(default_models: list[Any]) -> Iterator[AsyncMock]:
     """
     client = AsyncMock()
     client.with_options = MagicMock(return_value=client)
-    client.models.list = MagicMock(return_value=FakeModelList(default_models))
+    client.models.list = AsyncMock(return_value=FakeModelList(default_models))
+    client.chat.completions.create = AsyncMock()
 
     with (
         patch("custom_components.noris_ai._create_client", return_value=client),
@@ -139,26 +176,33 @@ def mock_client(default_models: list[Any]) -> Iterator[AsyncMock]:
             "custom_components.noris_ai.config_flow._create_client",
             return_value=client,
         ),
+        patch("custom_components.noris_ai.AsyncOpenAI", return_value=client),
     ):
         yield client
 
 
 @pytest.fixture
-def mock_config_entry() -> MockConfigEntry:
+def mock_openai(mock_client: AsyncMock) -> Generator[AsyncMock]:
+    """Keep the historical fixture name for tests that patch the SDK class."""
+    yield mock_client
+
+
+@pytest.fixture
+def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
     """Return a config entry with conversation, AI task, STT, and TTS subentries."""
-    return MockConfigEntry(
+    entry = MockConfigEntry(
         domain=DOMAIN,
         title="noris AI",
         data={CONF_API_KEY: "sk-bf-test"},
         subentries_data=[
             ConfigSubentryData(
-                data={CONF_MODEL: CHAT_MODEL},
+                data={CONF_MODEL: CHAT_MODEL, CONF_RECOMMENDED: True},
                 subentry_type=CONVERSATION_SUBENTRY_TYPE,
                 title=DEFAULT_CONVERSATION_NAME,
                 unique_id=None,
             ),
             ConfigSubentryData(
-                data={CONF_MODEL: CHAT_MODEL},
+                data={CONF_MODEL: CHAT_MODEL, CONF_RECOMMENDED: True},
                 subentry_type=AI_TASK_SUBENTRY_TYPE,
                 title=DEFAULT_AI_TASK_NAME,
                 unique_id=None,
@@ -177,22 +221,64 @@ def mock_config_entry() -> MockConfigEntry:
             ),
         ],
     )
+    entry.add_to_hass(hass)
+    return entry
 
 
-async def setup_integration(
-    hass: HomeAssistant, entry: MockConfigEntry
-) -> MockConfigEntry:
+@pytest.fixture
+def mock_config_entry_with_conversation(hass: HomeAssistant) -> MockConfigEntry:
+    """A config entry with one conversation agent (recommended settings)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="noris AI",
+        data={CONF_API_KEY: "sk-bf-test"},
+        subentries_data=[
+            ConfigSubentryData(
+                data={
+                    CONF_MODEL: DEFAULT_MODEL,
+                    CONF_RECOMMENDED: True,
+                    "llm_hass_api": ["assist"],
+                },
+                subentry_type=CONVERSATION_SUBENTRY_TYPE,
+                title="Test Agent",
+                unique_id=None,
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+@pytest.fixture
+def mock_config_entry_with_ai_task(hass: HomeAssistant) -> MockConfigEntry:
+    """A config entry with one AI task entity (recommended settings)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="noris AI",
+        data={CONF_API_KEY: "sk-bf-test"},
+        subentries_data=[
+            ConfigSubentryData(
+                data={CONF_MODEL: DEFAULT_MODEL, CONF_RECOMMENDED: True},
+                subentry_type=AI_TASK_SUBENTRY_TYPE,
+                title="Test Task",
+                unique_id=None,
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def setup_integration(hass: HomeAssistant, entry: MockConfigEntry) -> bool:
     """Add the config entry to hass and set it up.
 
-    The ``homeassistant`` core component is set up first because
+    The ``homeassistant`` core component is set up by an autouse fixture because
     ``conversation``'s default agent (an ``after_dependencies`` of this
     integration's platforms) reads ``hass.data[DATA_EXPOSED_ENTITIES]``, which
-    only exists once ``homeassistant`` has run its own setup. In production
-    that component is always loaded first as part of core bootstrap; the test
-    ``hass`` fixture starts already in ``CoreState.running`` without it.
+    only exists once ``homeassistant`` has run its own setup.
     """
-    await async_setup_component(hass, "homeassistant", {})
-    entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(entry.entry_id)
+    if hass.config_entries.async_get_entry(entry.entry_id) is None:
+        entry.add_to_hass(hass)
+    result = await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    return entry
+    return result

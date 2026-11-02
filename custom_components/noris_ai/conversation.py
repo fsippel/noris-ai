@@ -6,12 +6,17 @@ from typing import Literal
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigSubentry
-from homeassistant.const import CONF_LLM_HASS_API, CONF_PROMPT, MATCH_ALL
+from homeassistant.const import CONF_LLM_HASS_API, MATCH_ALL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NorisAIConfigEntry
-from .const import CONVERSATION_SUBENTRY_TYPE, DOMAIN
+from .const import (
+    CONF_PROMPT,
+    CONVERSATION_SUBENTRY_TYPE,
+    DOMAIN,
+    RECOMMENDED_CONVERSATION_MAX_TOKENS,
+)
 from .entity import NorisAIEntity
 
 PARALLEL_UPDATES = 0
@@ -34,12 +39,9 @@ class NorisAIConversationEntity(NorisAIEntity, conversation.ConversationEntity):
     """noris AI conversation agent."""
 
     _attr_name = None
+    _recommended_max_tokens = RECOMMENDED_CONVERSATION_MAX_TOKENS
 
-    def __init__(
-        self,
-        entry: NorisAIConfigEntry,
-        subentry: ConfigSubentry,
-    ) -> None:
+    def __init__(self, entry: NorisAIConfigEntry, subentry: ConfigSubentry) -> None:
         """Initialize the agent."""
         super().__init__(entry, subentry)
         if self.subentry.data.get(CONF_LLM_HASS_API):
@@ -59,7 +61,6 @@ class NorisAIConversationEntity(NorisAIEntity, conversation.ConversationEntity):
     ) -> conversation.ConversationResult:
         """Process the user input and call the API."""
         options = self.subentry.data
-
         try:
             await chat_log.async_provide_llm_data(
                 user_input.as_llm_context(DOMAIN),

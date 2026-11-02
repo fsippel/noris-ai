@@ -10,7 +10,7 @@ import voluptuous as vol
 from custom_components.noris_ai.entity import (
     _decode_tool_arguments,
     _extract_thinking,
-    _format_structure_output,
+    _format_structured_output,
     _split_thinking,
     _strip_markdown_fence,
 )
@@ -138,9 +138,9 @@ def test_extract_thinking_reasoning_field_suppresses_inline_markup() -> None:
     assert _extract_thinking(message) == ("<think>B</think>Antwort", "A")
 
 
-def test_format_structure_output_builds_strict_schema() -> None:
+def test_format_structured_output_builds_strict_schema() -> None:
     """Structured output is requested as a strict JSON schema."""
-    result = _format_structure_output("wetter", vol.Schema({vol.Required("t"): str}))
+    result = _format_structured_output("wetter", vol.Schema({vol.Required("t"): str}))
 
     assert result["type"] == "json_schema"
     assert result["json_schema"]["name"] == "wetter"
@@ -148,8 +148,8 @@ def test_format_structure_output_builds_strict_schema() -> None:
     assert "t" in result["json_schema"]["schema"]["properties"]
 
 
-def test_format_structure_output_defaults_name() -> None:
+def test_format_structured_output_defaults_name() -> None:
     """An empty name falls back to 'data'."""
-    result = _format_structure_output("", vol.Schema({}))
+    result = _format_structured_output("", vol.Schema({}))
 
     assert result["json_schema"]["name"] == "data"

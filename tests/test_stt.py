@@ -299,10 +299,7 @@ async def test_device_identity_matches_across_platforms(
     )
 
     assert len(devices) == 4
-    devices_by_subentry_id = {
-        next(iter(device.config_entries_subentries[mock_config_entry.entry_id])): device
-        for device in devices
-    }
+    devices_by_subentry_id = {device.config_subentry_id: device for device in devices}
     assert devices_by_subentry_id.keys() == mock_config_entry.subentries.keys()
 
     entity_registry = er.async_get(hass)

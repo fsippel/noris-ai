@@ -12,7 +12,6 @@ from homeassistant.helpers.httpx_client import get_async_client
 
 from .const import (
     AI_TASK_SUBENTRY_TYPE,
-    AUTH_HEADER,
     BASE_URL,
     CONVERSATION_SUBENTRY_TYPE,
     DEFAULT_AI_TASK_NAME,
@@ -24,10 +23,15 @@ from .const import (
     TTS_SUBENTRY_TYPE,
 )
 
-PLATFORMS = [Platform.AI_TASK, Platform.CONVERSATION, Platform.STT, Platform.TTS]
+PLATFORMS = [
+    Platform.AI_TASK,
+    Platform.CONVERSATION,
+    Platform.STT,
+    Platform.TTS,
+]
 
 # Subentries created before 1.2 were titled with the raw model id, which left
-# the device card showing no indication of what the device was.
+# the device card showing no indication of what the device actually is.
 SUBENTRY_DEFAULT_TITLES = {
     CONVERSATION_SUBENTRY_TYPE: DEFAULT_CONVERSATION_NAME,
     AI_TASK_SUBENTRY_TYPE: DEFAULT_AI_TASK_NAME,
@@ -39,18 +43,15 @@ type NorisAIConfigEntry = ConfigEntry[AsyncOpenAI]
 
 
 def _create_client(hass: HomeAssistant, api_key: str) -> AsyncOpenAI:
-    """Create the AsyncOpenAI client used by this integration.
+    """Create the AsyncOpenAI client for the ai.noris.de gateway.
 
-    The ai.noris.de gateway authenticates via a custom ``x-bf-vk`` header
-    instead of the standard ``Authorization: Bearer`` header, so the key is
-    passed through ``default_headers``. ``api_key`` is still required by the
-    SDK and carries the same value; the gateway simply reads ``x-bf-vk``.
-    TLS certificates are verified through Home Assistant's shared httpx client.
+    The gateway accepts standard Bearer authentication, so the key goes
+    straight into ``api_key``. TLS is verified through Home Assistant's
+    shared httpx client.
     """
     return AsyncOpenAI(
         base_url=BASE_URL,
         api_key=api_key,
-        default_headers={AUTH_HEADER: api_key},
         http_client=get_async_client(hass),
     )
 
@@ -58,9 +59,8 @@ def _create_client(hass: HomeAssistant, api_key: str) -> AsyncOpenAI:
 async def _validate_api_key(client: AsyncOpenAI) -> None:
     """Validate the API key against the models endpoint.
 
-    A valid key returns the model list; an invalid key raises
-    ``AuthenticationError`` (401) or ``PermissionDeniedError`` (403), which
-    propagate to the caller.
+    Raises ``AuthenticationError``/``PermissionDeniedError`` on a bad key,
+    other ``OpenAIError`` subclasses on connection problems.
     """
     await client.with_options(timeout=10.0).models.list()
 
@@ -105,15 +105,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: NorisAIConfigEntry) -> b
         raise ConfigEntryNotReady(err) from err
 
     entry.runtime_data = client
-
-    entry.async_on_unload(entry.add_update_listener(async_update_entry))
-
+    entry.async_on_unload(entry.add_update_listener(_async_update_entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
     return True
 
 
-async def async_update_entry(hass: HomeAssistant, entry: NorisAIConfigEntry) -> None:
+async def _async_update_entry(hass: HomeAssistant, entry: NorisAIConfigEntry) -> None:
     """Reload the entry when its data or subentries change."""
     await hass.config_entries.async_reload(entry.entry_id)
 

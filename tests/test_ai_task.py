@@ -1,100 +1,172 @@
-"""Tests for the noris AI AI Task entity."""
+"""Tests for the noris AI task entity."""
 
-from __future__ import annotations
+from unittest.mock import AsyncMock, MagicMock
 
-from unittest.mock import AsyncMock
-
+from openai import BadRequestError
+from openai.types.chat import ChatCompletion, ChatCompletionMessage
+from openai.types.chat.chat_completion import Choice
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
 
 from homeassistant.components import ai_task
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
 
 from .conftest import setup_integration
-from .test_conversation import chat_completion
+
+ENTITY_ID = "ai_task.test_task"
 
 
-def _task_entity_id(hass: HomeAssistant, entry: MockConfigEntry) -> str:
-    """Return the single AI task entity id belonging to this config entry.
-
-    Resolved through the entity registry rather than ``hass.states``, the
-    same pattern used by ``test_conversation.py``'s ``_conversation_entities``
-    (isolates the entity noris_ai's platform actually created).
-    """
-    registry = er.async_get(hass)
-    return next(
-        entity.entity_id
-        for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
-        if entity.domain == "ai_task"
+def _completion(content: str) -> ChatCompletion:
+    return ChatCompletion(
+        id="c",
+        created=0,
+        model="test",
+        object="chat.completion",
+        choices=[
+            Choice(
+                index=0,
+                finish_reason="stop",
+                message=ChatCompletionMessage(role="assistant", content=content),
+            )
+        ],
     )
 
 
-async def test_generate_free_text(
-    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+async def test_generate_text(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_ai_task
 ) -> None:
-    """Free-text generation returns the raw model output."""
-    mock_client.chat.completions.create = AsyncMock(
-        return_value=chat_completion("Es sind 21 Grad.")
+    await setup_integration(hass, mock_config_entry_with_ai_task)
+    mock_openai.chat.completions.create = AsyncMock(
+        return_value=_completion("Freitext-Ergebnis")
     )
-    await setup_integration(hass, mock_config_entry)
 
     result = await ai_task.async_generate_data(
-        hass,
-        task_name="wetter",
-        entity_id=_task_entity_id(hass, mock_config_entry),
-        instructions="Wie warm ist es?",
+        hass, task_name="t", entity_id=ENTITY_ID, instructions="Sag was"
     )
 
-    assert result.data == "Es sind 21 Grad."
+    assert result.data == "Freitext-Ergebnis"
+    kwargs = mock_openai.chat.completions.create.call_args.kwargs
+    assert kwargs["max_tokens"] == 8000
+    assert "stream" not in kwargs
 
 
 async def test_generate_structured_data(
-    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_ai_task
 ) -> None:
-    """A structure request parses the JSON response into a dict."""
-    mock_client.chat.completions.create = AsyncMock(
-        return_value=chat_completion('{"temperatur": 21}')
+    await setup_integration(hass, mock_config_entry_with_ai_task)
+    mock_openai.chat.completions.create = AsyncMock(
+        return_value=_completion('```json\n{"name": "Flo"}\n```')
     )
-    await setup_integration(hass, mock_config_entry)
 
     result = await ai_task.async_generate_data(
         hass,
-        task_name="wetter",
-        entity_id=_task_entity_id(hass, mock_config_entry),
-        instructions="Wie warm ist es?",
-        structure=vol.Schema({vol.Required("temperatur"): int}),
+        task_name="t",
+        entity_id=ENTITY_ID,
+        instructions="Extrahiere",
+        structure=vol.Schema({vol.Required("name"): str}),
     )
 
-    assert result.data == {"temperatur": 21}
-    # The mock returns valid JSON regardless of what was requested, so
-    # without this the `if structure:` branch that builds response_format
-    # in entity.py could be deleted outright and this test would still pass.
-    response_format = mock_client.chat.completions.create.call_args.kwargs[
-        "response_format"
-    ]
-    assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["name"] == "wetter"
-    assert response_format["json_schema"]["strict"] is True
-    assert "temperatur" in response_format["json_schema"]["schema"]["properties"]
+    assert result.data == {"name": "Flo"}
+    kwargs = mock_openai.chat.completions.create.call_args.kwargs
+    assert kwargs["response_format"]["type"] == "json_schema"
 
 
-async def test_generate_structured_data_invalid_json(
-    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+async def test_structured_fallback_without_response_format(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_ai_task
 ) -> None:
-    """Unparseable structured output raises a clear error."""
-    mock_client.chat.completions.create = AsyncMock(
-        return_value=chat_completion("nicht json")
+    """BadRequest on response_format triggers a prompt-based retry."""
+    await setup_integration(hass, mock_config_entry_with_ai_task)
+    response = MagicMock()
+    response.status_code = 400
+    mock_openai.chat.completions.create = AsyncMock(
+        side_effect=[
+            BadRequestError(
+                message="response_format not supported",
+                response=response,
+                body=None,
+            ),
+            _completion('{"name": "Flo"}'),
+        ]
     )
-    await setup_integration(hass, mock_config_entry)
 
-    with pytest.raises(HomeAssistantError, match="Error parsing structured response"):
+    result = await ai_task.async_generate_data(
+        hass,
+        task_name="t",
+        entity_id=ENTITY_ID,
+        instructions="Extrahiere",
+        structure=vol.Schema({vol.Required("name"): str}),
+    )
+
+    assert result.data == {"name": "Flo"}
+    assert mock_openai.chat.completions.create.await_count == 2
+    retry_kwargs = mock_openai.chat.completions.create.call_args.kwargs
+    assert "response_format" not in retry_kwargs
+    assert any(
+        m["role"] == "system" and "JSON" in str(m["content"])
+        for m in retry_kwargs["messages"]
+    )
+
+
+async def test_invalid_json_raises(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_ai_task
+) -> None:
+    await setup_integration(hass, mock_config_entry_with_ai_task)
+    mock_openai.chat.completions.create = AsyncMock(
+        return_value=_completion("kein json")
+    )
+
+    with pytest.raises(HomeAssistantError, match="parsing"):
         await ai_task.async_generate_data(
             hass,
-            task_name="wetter",
-            entity_id=_task_entity_id(hass, mock_config_entry),
-            instructions="Wie warm ist es?",
-            structure=vol.Schema({vol.Required("temperatur"): int}),
+            task_name="t",
+            entity_id=ENTITY_ID,
+            instructions="Extrahiere",
+            structure=vol.Schema({vol.Required("name"): str}),
         )
+
+
+async def test_length_finish_without_output_raises(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_ai_task
+) -> None:
+    """A truncated, empty completion must raise a max_tokens hint instead of
+    silently returning no data."""
+    await setup_integration(hass, mock_config_entry_with_ai_task)
+    truncated = ChatCompletion(
+        id="c",
+        created=0,
+        model="test",
+        object="chat.completion",
+        choices=[
+            Choice(
+                index=0,
+                finish_reason="length",
+                message=ChatCompletionMessage(role="assistant", content=None),
+            )
+        ],
+    )
+    mock_openai.chat.completions.create = AsyncMock(return_value=truncated)
+
+    with pytest.raises(HomeAssistantError, match="max_tokens"):
+        await ai_task.async_generate_data(
+            hass, task_name="t", entity_id=ENTITY_ID, instructions="Sag was"
+        )
+
+
+async def test_bad_request_without_structure_does_not_retry(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_ai_task
+) -> None:
+    """A BadRequestError on a free-text task propagates without fallback retry."""
+    await setup_integration(hass, mock_config_entry_with_ai_task)
+    response = MagicMock()
+    response.status_code = 400
+    mock_openai.chat.completions.create = AsyncMock(
+        side_effect=BadRequestError(message="bad request", response=response, body=None)
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await ai_task.async_generate_data(
+            hass, task_name="t", entity_id=ENTITY_ID, instructions="Sag was"
+        )
+
+    assert mock_openai.chat.completions.create.await_count == 1

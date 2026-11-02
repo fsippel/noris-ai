@@ -3,36 +3,36 @@
 import logging
 import re
 
-from homeassistant.const import CONF_LLM_HASS_API, CONF_PROMPT
-from homeassistant.helpers import llm
+from homeassistant.const import CONF_LLM_HASS_API, CONF_PROMPT  # noqa: F401
 
 DOMAIN = "noris_ai"
 LOGGER = logging.getLogger(__package__)
 
-# ai.noris.de is an OpenAI-compatible gateway. Note that authentication does
-# NOT use the standard ``Authorization: Bearer`` header but a custom
-# ``x-bf-vk`` header (see ``__init__._create_client``).
+# ai.noris.de is a Bifrost gateway exposing an OpenAI-compatible API.
+# It accepts standard ``Authorization: *** auth (verified live), so the
+# openai SDK works out of the box with ``api_key`` + ``base_url``.
 BASE_URL = "https://ai.noris.de/v1"
 
-# Custom authentication header used by the ai.noris.de gateway.
-AUTH_HEADER = "x-bf-vk"
+DEFAULT_MODEL = "vllm/gpt-oss-120b"
 
+CONF_RECOMMENDED = "recommended"
 CONF_MAX_TOKENS = "max_tokens"
 CONF_TEMPERATURE = "temperature"
+CONF_TOP_P = "top_p"
+CONF_ENABLE_REASONING = "enable_reasoning"
+
+# Reasoning models spend tokens on thinking before answering; too small a
+# budget yields empty content with finish_reason == "length".
+RECOMMENDED_CONVERSATION_MAX_TOKENS = 3000
+RECOMMENDED_AI_TASK_MAX_TOKENS = 8000
+RECOMMENDED_TEMPERATURE = 1.0
+RECOMMENDED_TOP_P = 1.0
 
 CONVERSATION_SUBENTRY_TYPE = "conversation"
 AI_TASK_SUBENTRY_TYPE = "ai_task_data"
 
-RECOMMENDED_CONVERSATION_OPTIONS = {
-    CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
-    CONF_PROMPT: llm.DEFAULT_INSTRUCTIONS_PROMPT,
-}
-
-# AI Task entities only need a model: the ai_task base class supplies the
-# system prompt and the user instructions itself, so a prompt option here
-# would have no effect.
-
 STT_SUBENTRY_TYPE = "stt"
+TTS_SUBENTRY_TYPE = "tts"
 
 # Subentry titles. These become the device name, and Home Assistant slugifies
 # the device name into the entity id, so they must read well in both places.
@@ -44,6 +44,19 @@ DEFAULT_AI_TASK_NAME = "noris AI Task"
 DEFAULT_STT_NAME = "noris AI Speech-to-text"
 DEFAULT_TTS_NAME = "noris AI Text-to-speech"
 
+# Model ids follow ``<provider>/<channel>/<slug>`` (e.g.
+# ``vllm/release/glm-5-3``, ``Kokoro-TTS/release/kokoro-tts-german-martin``).
+# The channel separates production from staging deployments of the same model.
+# The default picker prefers production and only falls back to staging when a
+# capability exists nowhere else, which is currently the case for transcription.
+RELEASE_CHANNEL = "release"
+STAGING_CHANNEL = "qsu"
+
+# Preferred defaults are matched by id first and by suffix second, because the
+# gateway renames models by adding channel prefixes.
+PREFERRED_STT_MODEL = "vllm/qsu/voxtral-small-24b-2507"
+PREFERRED_TTS_MODEL = "Kokoro-TTS/release/kokoro-tts-german-martin"
+
 # Seconds to wait for a transcription before failing the pipeline. The gateway
 # answers a five-second utterance in well under a second; this bound exists so a
 # stalled gateway does not hang the voice satellite.
@@ -54,7 +67,7 @@ STT_TIMEOUT = 30.0
 # Known audio model families are matched by name instead. Do not "simplify" this
 # to the modality metadata without re-probing /v1/models first.
 AUDIO_MODEL_PATTERN = re.compile(
-    r"voxtral|whisper|qwen.*audio|granite-speech", re.IGNORECASE
+    r"voxtral|whisper|qwen.*audio|granite-speech|vibevoice", re.IGNORECASE
 )
 
 # Voxtral's documented languages, as BCP-47 tags. Deliberately not the ~130
@@ -90,19 +103,16 @@ STT_SUPPORTED_LANGUAGES = [
     "hi-IN",
 ]
 
-TTS_SUBENTRY_TYPE = "tts"
-
-# Seconds to wait for speech synthesis. Measured on the live gateway: ~1.1 s for
-# a short German sentence via Kokoro, ~1.9 s via CosyVoice3. The bound exists so
-# a stalled gateway fails promptly instead of hanging a voice satellite.
+# Seconds to wait for speech synthesis. Measured on the live gateway: ~1.0 s for
+# a short German sentence via Kokoro. The bound exists so a stalled gateway
+# fails promptly instead of hanging a voice satellite.
 TTS_TIMEOUT = 30.0
 
-# Speech capability CANNOT be read from the model catalog. As with
-# AUDIO_MODEL_PATTERN, every audio model is stamped with the default
-# text-in/text-out chat template, so speech models are matched by name.
-# Delete this in favour of output_modalities once the catalog reports an
-# "audio" output type. Do not "simplify" this to the modality metadata
-# without re-probing /v1/models first.
+# Speech capability CANNOT be read from the model catalog either: every audio
+# model is stamped with the default text-in/text-out chat template, so speech
+# models are matched by name. Delete this in favour of output_modalities once
+# the catalog reports an "audio" output type. Do not "simplify" this to the
+# modality metadata without re-probing /v1/models first.
 TTS_MODEL_PATTERN = re.compile(
     r"kokoro|cosyvoice|orpheus|xtts|bark|-tts/|tts-", re.IGNORECASE
 )
@@ -132,4 +142,8 @@ TTS_LANGUAGES_BY_PATTERN = (
     (re.compile(r"cosyvoice", re.IGNORECASE), TTS_GERMAN + TTS_ENGLISH),
 )
 TTS_DEFAULT_LANGUAGES = TTS_GERMAN + TTS_ENGLISH
+
+# The Assist pipeline asks for a language even when the caller names none.
+# German first, matching the deployments this integration was built for; the
+# entity's supported_languages still advertises every language of its model.
 TTS_DEFAULT_LANGUAGE = "de"
