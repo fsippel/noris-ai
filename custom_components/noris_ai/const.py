@@ -131,11 +131,21 @@ TTS_MODEL_PATTERN = re.compile(
 )
 
 # The gateway REQUIRES a voice field — omitting it returns
-# 400 "voice is required for speech completion" — but ignores its value:
-# "martin", "alloy" and a nonsense string all returned byte-identical audio.
-# Each model has exactly one voice, so no voice picker is offered and this
-# placeholder is sent to satisfy the API.
+# 400 "voice is required for speech completion". Kokoro ignores the value
+# ("martin", "alloy" and a nonsense string return byte-identical audio), but
+# CosyVoice3 does not: "default" never answers (90 s timeout) while a real
+# name answers in ~3 s, and the name selects the speaker. German is what the
+# house speaks, so the German speaker is the default.
 TTS_VOICE = "default"
+
+# Optional post-processing with ffmpeg (asetrate → pitch, atempo → tempo
+# restored) because the gateway exposes no pitch parameter. 0 disables it —
+# and 0 is what a low-latency pipeline wants: every extra ffmpeg pass costs
+# time-to-first-audio. Kokoro's German voice needs no correction.
+TTS_PITCH_SEMITONES = 0.0
+
+# Native output format of every speech model on the gateway, measured.
+TTS_SAMPLE_RATE = 24000
 
 # Home Assistant matches languages by EXACT string membership, with no region
 # fallback, so each claimed language needs its regional variants declared too.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import openai
@@ -15,6 +16,8 @@ from . import NorisAIConfigEntry
 from .const import (
     LOGGER,
     TTS_DEFAULT_LANGUAGE,
+    TTS_PITCH_SEMITONES,
+    TTS_SAMPLE_RATE,
     TTS_SUBENTRY_TYPE,
     TTS_TIMEOUT,
     TTS_VOICE,
@@ -23,6 +26,69 @@ from .entity import NorisAISubentryEntity
 from .helpers import tts_languages_for_model
 
 PARALLEL_UPDATES = 0
+
+
+def pitch_filter(sample_rate: int = TTS_SAMPLE_RATE) -> str:
+    """Return the ffmpeg filter that lowers pitch while keeping the tempo.
+
+    asetrate resamples, which shifts pitch and speed together; atempo then
+    undoes the speed change. One semitone is a factor of 2**(1/12).
+    """
+    factor = 2 ** (TTS_PITCH_SEMITONES / 12)
+    return (
+        f"asetrate={sample_rate}*{factor:.6f},"
+        f"aresample={sample_rate},atempo={1 / factor:.6f}"
+    )
+
+
+async def shift_pitch(audio: bytes) -> bytes:
+    """Return the WAV body with its pitch lowered, or the input on any failure.
+
+    Never raises: a missing or unhappy ffmpeg degrades to the original voice
+    rather than silencing the assistant.
+    """
+    if not TTS_PITCH_SEMITONES:
+        return audio
+
+    args = [
+        "ffmpeg",
+        "-nostdin",
+        "-v",
+        "error",
+        "-f",
+        "wav",
+        "-i",
+        "pipe:0",
+        "-af",
+        pitch_filter(),
+        "-ac",
+        "1",
+        "-ar",
+        str(TTS_SAMPLE_RATE),
+        "-f",
+        "wav",
+        "pipe:1",
+    ]
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except (FileNotFoundError, NotImplementedError) as err:
+        LOGGER.warning("ffmpeg unavailable, keeping the unshifted voice: %s", err)
+        return audio
+
+    shifted, errout = await process.communicate(audio)
+    if process.returncode != 0 or not shifted:
+        LOGGER.warning(
+            "Pitch shift failed (rc=%s), keeping the unshifted voice: %s",
+            process.returncode,
+            errout[:200],
+        )
+        return audio
+    return shifted
 
 
 async def async_setup_entry(
@@ -128,4 +194,4 @@ class NorisAITtsEntity(tts.TextToSpeechEntity, NorisAISubentryEntity):
         LOGGER.debug(
             "Synthesised %d characters into %d bytes", len(message), len(audio)
         )
-        return "wav", audio
+        return "wav", await shift_pitch(audio)

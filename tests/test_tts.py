@@ -15,7 +15,12 @@ from openai import (
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.noris_ai.const import TTS_TIMEOUT, TTS_VOICE
+from custom_components.noris_ai import tts as tts_platform
+from custom_components.noris_ai.const import (
+    TTS_PITCH_SEMITONES,
+    TTS_TIMEOUT,
+    TTS_VOICE,
+)
 from homeassistant.components import tts
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -24,6 +29,24 @@ from homeassistant.helpers import entity_registry as er
 from .conftest import setup_integration
 
 WAV = b"RIFF$\x00\x00\x00WAVEfmt " + b"\x00" * 40
+
+
+@pytest.fixture(autouse=True)
+def _skip_pitch_shift(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep ffmpeg out of the unit tests; the filter is tested on its own."""
+
+    async def _identity(audio: bytes) -> bytes:
+        return audio
+
+    monkeypatch.setattr(tts_platform, "shift_pitch", _identity)
+
+
+def test_pitch_filter_lowers_pitch_without_slowing() -> None:
+    """The filter resamples by the semitone factor and undoes it with atempo."""
+    factor = 2 ** (TTS_PITCH_SEMITONES / 12)
+    expression = tts_platform.pitch_filter(24000)
+    assert f"asetrate=24000*{factor:.6f}" in expression
+    assert f"atempo={1 / factor:.6f}" in expression
 
 
 def _binary(content: bytes) -> SimpleNamespace:
