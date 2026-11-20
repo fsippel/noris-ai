@@ -11,11 +11,32 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NorisAIConfigEntry
-from .const import LOGGER, STT_SUBENTRY_TYPE, STT_SUPPORTED_LANGUAGES, STT_TIMEOUT
+from .const import (
+    LOGGER,
+    STT_MAX_TRANSCRIPT_CHARS,
+    STT_PROMPT,
+    STT_SUBENTRY_TYPE,
+    STT_SUPPORTED_LANGUAGES,
+    STT_TIMEOUT,
+)
 from .entity import NorisAISubentryEntity
 from .helpers import pcm_to_wav
 
 PARALLEL_UPDATES = 0
+
+
+def _looks_like_an_answer(text: str) -> bool:
+    """Return True for output that cannot be a spoken command.
+
+    Voxtral answers the question instead of transcribing it often enough to
+    matter ("Wie hoch ist der PV Ertrag" produced a multi-paragraph essay with
+    markdown headings). Such a text is never a thing the user said: it is long,
+    structured, or both.
+    """
+    if len(text) > STT_MAX_TRANSCRIPT_CHARS:
+        return True
+    markers = ("\n\n", "###", "**", "\n- ", "\n1. ", "\n2. ")
+    return any(marker in text for marker in markers)
 
 
 async def async_setup_entry(
@@ -115,6 +136,11 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
                 file=("audio.wav", wav_audio, "audio/wav"),
                 model=self.model,
                 language=metadata.language.split("-")[0],
+                # temperature 0 keeps the model on the transcription task; the
+                # prompt biases it towards the house vocabulary (it is a hint,
+                # not an instruction the model must follow).
+                temperature=0,
+                prompt=STT_PROMPT,
             )
         # AuthenticationError and PermissionDeniedError subclass
         # APIStatusError, which subclasses OpenAIError, so this ordering
@@ -144,6 +170,18 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
         text = (response.text or "").strip()
         if not text:
             LOGGER.warning("Transcription returned an empty result")
+            return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
+
+        if _looks_like_an_answer(text):
+            # Voxtral occasionally answers the question instead of transcribing
+            # it (whole paragraphs, markdown headings). Acting on that would
+            # send nonsense into the pipeline, so report a failed transcription
+            # and let the satellite say it did not understand.
+            LOGGER.warning(
+                "Discarded a %d character transcript: it reads like an answer, "
+                "not a transcription",
+                len(text),
+            )
             return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
 
         # Transcripts are voice content: debug level only, never higher.

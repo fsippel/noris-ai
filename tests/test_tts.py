@@ -16,11 +16,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.noris_ai import tts as tts_platform
-from custom_components.noris_ai.const import (
-    TTS_PITCH_SEMITONES,
-    TTS_TIMEOUT,
-    TTS_VOICE,
-)
+from custom_components.noris_ai.const import TTS_PITCH_SEMITONES, TTS_TIMEOUT, TTS_VOICE
 from homeassistant.components import tts
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -258,3 +254,14 @@ async def test_spoken_text_is_never_logged(
         await _entity(hass, mock_config_entry).async_get_tts_audio(secret, "de", {})
 
     assert secret not in caplog.text
+
+
+def test_product_names_are_respelled_for_the_german_voice() -> None:
+    """Home Assistant must not be read with German phonemes."""
+    assert (
+        tts_platform.spoken_text("Ich bin der Assistent von Home Assistant.")
+        == "Ich bin der Assistent von Houm Ässisstänt."
+    )
+    assert (
+        tts_platform.spoken_text("Kein Produktname hier.") == "Kein Produktname hier."
+    )

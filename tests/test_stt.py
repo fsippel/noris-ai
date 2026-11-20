@@ -319,3 +319,16 @@ async def test_device_identity_matches_across_platforms(
 
         entity_entry = entities_by_subentry_id[subentry_id]
         assert entity_entry.unique_id == subentry_id
+
+
+def test_answer_shaped_transcript_is_discarded() -> None:
+    """Voxtral sometimes answers instead of transcribing; that must not pass."""
+    from custom_components.noris_ai.stt import _looks_like_an_answer
+
+    assert not _looks_like_an_answer("Wie hoch ist der PV-Ertrag?")
+    assert not _looks_like_an_answer("Schalte das Licht in der Küche ein.")
+    assert _looks_like_an_answer("### Faktoren, die den Ertrag beeinflussen")
+    assert _looks_like_an_answer(
+        "Der Ertrag hängt von mehreren Faktoren ab.\n\n1. Lage"
+    )
+    assert _looks_like_an_answer("x" * 300)

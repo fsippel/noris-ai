@@ -147,6 +147,28 @@ TTS_PITCH_SEMITONES = 0.0
 # Native output format of every speech model on the gateway, measured.
 TTS_SAMPLE_RATE = 24000
 
+# The German Kokoro voice reads English product names with German phonemes
+# ("Home Assistant" becomes "Hohme Assistent"). Rewriting them into German
+# phonetics before synthesis is the only lever — the gateway has no language
+# switching per request. Order matters: longer phrases first.
+TTS_PRONUNCIATIONS: tuple[tuple[str, str], ...] = (
+    ("Home Assistant", "Houm Ässisstänt"),
+    ("Home-Assistant", "Houm Ässisstänt"),
+)
+
+# Hint sent with every transcription. Voxtral has no vocabulary of its own, so
+# domain words help it pick "PV-Ertrag" over "felsenbagger". It is a hint: the
+# model stays free to transcribe whatever it hears.
+STT_PROMPT = (
+    "Transkribiere wörtlich auf Deutsch. Fachbegriffe: Photovoltaik, PV-Ertrag, "
+    "Kilowattstunden, Kilowatt, Speicher, Netzfluss, Küche, Schlafzimmer, "
+    "Wohnzimmer, Esszimmer, Rolle."
+)
+
+# Anything longer than this is not a spoken command but the model answering the
+# question; such transcripts are discarded (see stt.py).
+STT_MAX_TRANSCRIPT_CHARS = 160
+
 # Home Assistant matches languages by EXACT string membership, with no region
 # fallback, so each claimed language needs its regional variants declared too.
 TTS_GERMAN = ["de", "de-DE", "de-AT", "de-CH"]

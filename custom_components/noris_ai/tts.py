@@ -17,6 +17,7 @@ from .const import (
     LOGGER,
     TTS_DEFAULT_LANGUAGE,
     TTS_PITCH_SEMITONES,
+    TTS_PRONUNCIATIONS,
     TTS_SAMPLE_RATE,
     TTS_SUBENTRY_TYPE,
     TTS_TIMEOUT,
@@ -26,6 +27,13 @@ from .entity import NorisAISubentryEntity
 from .helpers import tts_languages_for_model
 
 PARALLEL_UPDATES = 0
+
+
+def spoken_text(message: str) -> str:
+    """Rewrite product names the German voice would mangle."""
+    for written, spoken in TTS_PRONUNCIATIONS:
+        message = message.replace(written, spoken)
+    return message
 
 
 def pitch_filter(sample_rate: int = TTS_SAMPLE_RATE) -> str:
@@ -154,7 +162,7 @@ class NorisAITtsEntity(tts.TextToSpeechEntity, NorisAISubentryEntity):
                 timeout=TTS_TIMEOUT
             ).audio.speech.create(
                 model=self.model,
-                input=message,
+                input=spoken_text(message),
                 voice=TTS_VOICE,
                 response_format="wav",
             )
