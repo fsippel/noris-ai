@@ -130,12 +130,16 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
 
         # The qsu lane flaps: a pod rollout answers 503 with an HTML
         # "Application is not available" page within milliseconds, and that used
-        # to kill the whole voice turn. Try the configured model once, then the
-        # stable fallback — and say so, because a silent model switch would hide
-        # a broken deployment.
+        # to kill the whole voice turn. Worse, one model can vanish from the
+        # catalog while the other one serves — and then both can sit behind the
+        # same upstream. So: try the configured model, then the fallback, and if
+        # there is no distinct fallback configured, give the same model one
+        # second chance. Every deviation is logged, because a silent model switch
+        # would hide a broken deployment.
         candidates = [self.model]
-        if STT_FALLBACK_MODEL not in candidates:
-            candidates.append(STT_FALLBACK_MODEL)
+        candidates.append(
+            STT_FALLBACK_MODEL if STT_FALLBACK_MODEL != self.model else self.model
+        )
 
         response = None
         for attempt, model in enumerate(candidates):
@@ -154,7 +158,13 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
                     temperature=0,
                     prompt=STT_PROMPT,
                 )
-                if attempt:
+                if attempt and model == self.model:
+                    LOGGER.warning(
+                        "Transcription succeeded on a retry with %s: the first "
+                        "attempt hit a transient upstream error",
+                        model,
+                    )
+                elif attempt:
                     LOGGER.warning(
                         "Transcribed with fallback model %s: configured model %s "
                         "is unavailable. Fix the deployment or reconfigure the "

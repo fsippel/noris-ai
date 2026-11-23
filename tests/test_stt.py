@@ -388,3 +388,34 @@ async def test_unavailable_model_falls_back_to_the_stable_one(
     assert result.text == "Wie voll ist der Akku?"
     assert seen == [NEMOTRON_MODEL, "vllm/qsu/voxtral-small-24b-2507"]
     assert "fallback" in caplog.text.lower()
+
+
+async def test_transient_error_retries_the_same_model(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No distinct fallback configured: the same model gets a second chance.
+
+    While the STT upstream flaps, a single 503 costs one extra round trip
+    instead of the whole voice turn.
+    """
+    seen: list[str] = []
+
+    async def create(**kwargs):
+        seen.append(kwargs["model"])
+        if len(seen) == 1:
+            raise _status_error(503)
+        return SimpleNamespace(text="Wie voll ist der Akku?")
+
+    mock_client.audio.transcriptions.create = AsyncMock(side_effect=create)
+    await setup_integration(hass, mock_config_entry)
+
+    result = await _entity(hass, mock_config_entry).async_process_audio_stream(
+        _metadata(), _stream(PCM)
+    )
+
+    assert result.result is stt.SpeechResultState.SUCCESS
+    assert seen == ["vllm/qsu/voxtral-small-24b-2507"] * 2
+    assert "retry" in caplog.text.lower()
