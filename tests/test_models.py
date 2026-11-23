@@ -9,10 +9,32 @@ from custom_components.noris_ai.const import DEFAULT_MODEL
 from custom_components.noris_ai.models import (
     async_get_model_options,
     default_model,
+    is_audio_model,
     is_selectable_model,
+    is_stt_model,
     model_label,
 )
 from homeassistant.helpers.selector import SelectOptionDict
+
+
+def _model(model_id: str, **extra) -> Model:
+    return Model.model_validate({"id": model_id, "object": "model", **extra})
+
+
+def test_nemotron_transcribe_counts_as_stt_model() -> None:
+    """The gateway does not flag Nemotron Transcribe as an audio model.
+
+    Without the literal name match in AUDIO_MODEL_PATTERN the model never shows
+    up in the speech-to-text dropdown and cannot be selected as an engine.
+    """
+    model = _model("vllm/qsu/nemotron-3.5-transcribe")
+    assert is_audio_model(model)
+    assert is_stt_model(model)
+
+
+def test_plain_transcribe_chat_model_is_not_stt() -> None:
+    """The name match must not drag text-to-text models into the STT dropdown."""
+    assert not is_stt_model(_model("vllm/release/qwen3.8-27b"))
 
 
 def test_filter_excludes_rerankers_and_drafts() -> None:

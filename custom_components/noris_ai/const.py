@@ -66,8 +66,13 @@ STT_TIMEOUT = 30.0
 # Voxtral's input_modalities as text-only even though transcription works.
 # Known audio model families are matched by name instead. Do not "simplify" this
 # to the modality metadata without re-probing /v1/models first.
+#
+# "transcribe" catches the Nemotron Transcribe family
+# (vllm/qsu/nemotron-3.5-transcribe): the gateway never advertises it as an audio
+# model, so without the literal match it is not selectable as an STT engine.
 AUDIO_MODEL_PATTERN = re.compile(
-    r"voxtral|whisper|qwen.*audio|granite-speech|vibevoice", re.IGNORECASE
+    r"voxtral|whisper|qwen.*audio|granite-speech|vibevoice|nemotron.*transcribe|transcribe",
+    re.IGNORECASE,
 )
 
 # Voxtral's documented languages, as BCP-47 tags. Deliberately not the ~130
