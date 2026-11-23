@@ -162,8 +162,11 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
             try:
                 # response_format is left at its default: the gateway mishandles
                 # "text" by nesting the whole JSON body inside the text field.
+                # max_retries=0 hands recovery to the loop below: the SDK's
+                # default (2 retries) amplified every doomed 503 call to three
+                # round trips before the fallback even started.
                 response = await client.with_options(
-                    timeout=STT_TIMEOUT
+                    timeout=STT_TIMEOUT, max_retries=0
                 ).audio.transcriptions.create(
                     file=("audio.wav", wav_audio, "audio/wav"),
                     model=model,

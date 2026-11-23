@@ -115,7 +115,7 @@ async def test_transcription_success(
     assert result.result is stt.SpeechResultState.SUCCESS
     assert result.text == "Schalte das Licht ein."
 
-    mock_client.with_options.assert_called_once_with(timeout=STT_TIMEOUT)
+    mock_client.with_options.assert_called_once_with(timeout=STT_TIMEOUT, max_retries=0)
 
     kwargs = mock_client.audio.transcriptions.create.call_args.kwargs
     assert kwargs["model"] == "vllm/qsu/voxtral-small-24b-2507"
