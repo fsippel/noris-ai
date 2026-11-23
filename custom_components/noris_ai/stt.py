@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterable
 
 import openai
@@ -13,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import NorisAIConfigEntry
 from .const import (
     LOGGER,
+    STT_BREAKER_COOLDOWN_S,
     STT_FALLBACK_MODEL,
     STT_MAX_TRANSCRIPT_CHARS,
     STT_PROMPT,
@@ -136,13 +138,27 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
         # there is no distinct fallback configured, give the same model one
         # second chance. Every deviation is logged, because a silent model switch
         # would hide a broken deployment.
-        candidates = [self.model]
-        candidates.append(
-            STT_FALLBACK_MODEL if STT_FALLBACK_MODEL != self.model else self.model
-        )
+        #
+        # While the primary is down, every turn would pay the doomed call first
+        # (~1.5 s of 503 before the fallback even starts). A small circuit
+        # breaker stops that: after the primary failed, the fallback serves
+        # alone for STT_BREAKER_COOLDOWN_S, then the primary is probed again.
+        breaker_open = getattr(self, "_breaker_open_until", 0.0) > time.monotonic()
+        has_distinct_fallback = STT_FALLBACK_MODEL != self.model
+
+        if breaker_open and has_distinct_fallback:
+            candidates = [STT_FALLBACK_MODEL]
+        else:
+            candidates = [self.model]
+            candidates.append(
+                STT_FALLBACK_MODEL if has_distinct_fallback else self.model
+            )
 
         response = None
+        successful_model = None
+        primary_was_attempted = False
         for attempt, model in enumerate(candidates):
+            primary_was_attempted = primary_was_attempted or model == self.model
             try:
                 # response_format is left at its default: the gateway mishandles
                 # "text" by nesting the whole JSON body inside the text field.
@@ -158,6 +174,7 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
                     temperature=0,
                     prompt=STT_PROMPT,
                 )
+                successful_model = model
                 if attempt and model == self.model:
                     LOGGER.warning(
                         "Transcription succeeded on a retry with %s: the first "
@@ -201,7 +218,30 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
                 LOGGER.error("Error talking to transcription API (%s): %s", model, err)
 
         if response is None:
+            if primary_was_attempted and has_distinct_fallback:
+                # Open the breaker: the next turns go straight to the fallback
+                # instead of paying the doomed primary call first.
+                self._breaker_open_until = time.monotonic() + STT_BREAKER_COOLDOWN_S
+                LOGGER.info(
+                    "Primary transcription model %s is unavailable; using "
+                    "fallback %s alone for %s s, then trying the primary again",
+                    self.model,
+                    STT_FALLBACK_MODEL,
+                    STT_BREAKER_COOLDOWN_S,
+                )
             return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
+
+        if successful_model == self.model:
+            self._breaker_open_until = 0.0
+        elif primary_was_attempted and has_distinct_fallback:
+            self._breaker_open_until = time.monotonic() + STT_BREAKER_COOLDOWN_S
+            LOGGER.info(
+                "Primary transcription model %s failed once; using fallback %s "
+                "alone for %s s, then trying the primary again",
+                self.model,
+                STT_FALLBACK_MODEL,
+                STT_BREAKER_COOLDOWN_S,
+            )
 
         text = (response.text or "").strip()
         if not text:

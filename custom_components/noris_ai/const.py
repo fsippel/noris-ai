@@ -64,6 +64,12 @@ PREFERRED_TTS_MODEL = "Kokoro-TTS/release/kokoro-tts-german-martin"
 # broken deployment never hides behind a working fallback.
 STT_FALLBACK_MODEL = "vllm/qsu/voxtral-small-24b-2507"
 
+# Circuit breaker: after the primary transcription model failed, the fallback
+# serves ALONE for this long before the primary is probed again. Without it,
+# every voice turn pays the doomed primary call first (~1.5 s of 503) while the
+# upstream is down. Instance state, so a reload resets it harmlessly.
+STT_BREAKER_COOLDOWN_S = 120.0
+
 # Seconds to wait for a transcription before failing the pipeline. The gateway
 # answers a five-second utterance in well under a second; this bound exists so a
 # stalled gateway does not hang the voice satellite.

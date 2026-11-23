@@ -419,3 +419,52 @@ async def test_transient_error_retries_the_same_model(
     assert result.result is stt.SpeechResultState.SUCCESS
     assert seen == ["vllm/qsu/voxtral-small-24b-2507"] * 2
     assert "retry" in caplog.text.lower()
+
+
+async def test_breaker_skips_a_dead_primary_between_turns(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Once the primary failed, later turns must not pay its doomed call.
+
+    Turn 1: nemotron 503, voxtral rescues. Turn 2 goes straight to voxtral;
+    after the cooldown the primary is probed again (not asserted here — that
+    would need a frozen clock).
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="noris AI",
+        data={CONF_API_KEY: "sk-bf-test"},
+        subentries_data=[
+            ConfigSubentryData(
+                data={CONF_MODEL: NEMOTRON_MODEL},
+                subentry_type=STT_SUBENTRY_TYPE,
+                title=DEFAULT_STT_NAME,
+                unique_id=None,
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+
+    seen: list[str] = []
+
+    async def create(**kwargs):
+        model = kwargs["model"]
+        seen.append(model)
+        if model == NEMOTRON_MODEL:
+            raise _status_error(503)
+        return SimpleNamespace(text="Wie voll ist der Akku?")
+
+    mock_client.audio.transcriptions.create = AsyncMock(side_effect=create)
+    await setup_integration(hass, entry)
+    entity = _entity(hass, entry)
+
+    first = await entity.async_process_audio_stream(_metadata(), _stream(PCM))
+    second = await entity.async_process_audio_stream(_metadata(), _stream(PCM))
+
+    assert first.result is stt.SpeechResultState.SUCCESS
+    assert second.result is stt.SpeechResultState.SUCCESS
+    assert seen.count(NEMOTRON_MODEL) == 1
+    assert seen.count("vllm/qsu/voxtral-small-24b-2507") == 2
+    assert "then trying the primary again" in caplog.text
