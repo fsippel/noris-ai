@@ -57,6 +57,13 @@ STAGING_CHANNEL = "qsu"
 PREFERRED_STT_MODEL = "vllm/qsu/voxtral-small-24b-2507"
 PREFERRED_TTS_MODEL = "Kokoro-TTS/release/kokoro-tts-german-martin"
 
+# Fallback transcription model. The qsu lane flaps: a pod rollout answers 503
+# with an HTML "Application is not available" page in milliseconds, which used to
+# fail the entire voice turn ("speech-to-text failed"). One retry on the stable
+# model keeps the assistant usable; the switch is logged at warning level so a
+# broken deployment never hides behind a working fallback.
+STT_FALLBACK_MODEL = "vllm/qsu/voxtral-small-24b-2507"
+
 # Seconds to wait for a transcription before failing the pipeline. The gateway
 # answers a five-second utterance in well under a second; this bound exists so a
 # stalled gateway does not hang the voice satellite.

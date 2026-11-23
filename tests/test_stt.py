@@ -18,9 +18,15 @@ from openai import (
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.noris_ai.const import DOMAIN, STT_TIMEOUT
+from custom_components.noris_ai.const import (
+    DEFAULT_STT_NAME,
+    DOMAIN,
+    STT_SUBENTRY_TYPE,
+    STT_TIMEOUT,
+)
 from homeassistant.components import stt
-from homeassistant.const import CONF_MODEL
+from homeassistant.config_entries import ConfigSubentryData
+from homeassistant.const import CONF_API_KEY, CONF_MODEL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -332,3 +338,53 @@ def test_answer_shaped_transcript_is_discarded() -> None:
         "Der Ertrag hängt von mehreren Faktoren ab.\n\n1. Lage"
     )
     assert _looks_like_an_answer("x" * 300)
+
+
+NEMOTRON_MODEL = "vllm/qsu/nemotron-3.5-transcribe"
+
+
+async def test_unavailable_model_falls_back_to_the_stable_one(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A 503 from the configured model must not kill the voice turn.
+
+    The qsu lane answers 503 with an HTML "Application is not available" page
+    while a pod rolls; without the fallback the satellite says "speech-to-text
+    failed" and the whole turn is lost.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="noris AI",
+        data={CONF_API_KEY: "sk-bf-test"},
+        subentries_data=[
+            ConfigSubentryData(
+                data={CONF_MODEL: NEMOTRON_MODEL},
+                subentry_type=STT_SUBENTRY_TYPE,
+                title=DEFAULT_STT_NAME,
+                unique_id=None,
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+
+    seen: list[str] = []
+
+    async def create(**kwargs):
+        seen.append(kwargs["model"])
+        if kwargs["model"] == NEMOTRON_MODEL:
+            raise _status_error(503)
+        return SimpleNamespace(text="Wie voll ist der Akku?")
+
+    mock_client.audio.transcriptions.create = AsyncMock(side_effect=create)
+    await setup_integration(hass, entry)
+
+    result = await _entity(hass, entry).async_process_audio_stream(
+        _metadata(), _stream(PCM)
+    )
+
+    assert result.result is stt.SpeechResultState.SUCCESS
+    assert result.text == "Wie voll ist der Akku?"
+    assert seen == [NEMOTRON_MODEL, "vllm/qsu/voxtral-small-24b-2507"]
+    assert "fallback" in caplog.text.lower()

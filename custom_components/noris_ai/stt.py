@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import NorisAIConfigEntry
 from .const import (
     LOGGER,
+    STT_FALLBACK_MODEL,
     STT_MAX_TRANSCRIPT_CHARS,
     STT_PROMPT,
     STT_SUBENTRY_TYPE,
@@ -127,44 +128,69 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
 
         client = self.entry.runtime_data
 
-        try:
-            # response_format is left at its default: the gateway mishandles
-            # "text" by nesting the whole JSON body inside the text field.
-            response = await client.with_options(
-                timeout=STT_TIMEOUT
-            ).audio.transcriptions.create(
-                file=("audio.wav", wav_audio, "audio/wav"),
-                model=self.model,
-                language=metadata.language.split("-")[0],
-                # temperature 0 keeps the model on the transcription task; the
-                # prompt biases it towards the house vocabulary (it is a hint,
-                # not an instruction the model must follow).
-                temperature=0,
-                prompt=STT_PROMPT,
-            )
-        # AuthenticationError and PermissionDeniedError subclass
-        # APIStatusError, which subclasses OpenAIError, so this ordering
-        # (auth -> APIStatusError -> APITimeoutError -> OpenAIError) is
-        # load-bearing: reordering it silently breaks the reauth path.
-        except (openai.AuthenticationError, openai.PermissionDeniedError) as err:
-            LOGGER.error("Authentication failed during transcription: %s", err)
-            self.entry.async_start_reauth(self.hass)
-            return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
-        except openai.APIStatusError as err:
-            if err.status_code == 404:
-                LOGGER.error(
-                    "Model %s does not support transcription. Reconfigure the "
-                    "speech-to-text entity to use an audio model",
-                    self.model,
+        # The qsu lane flaps: a pod rollout answers 503 with an HTML
+        # "Application is not available" page within milliseconds, and that used
+        # to kill the whole voice turn. Try the configured model once, then the
+        # stable fallback — and say so, because a silent model switch would hide
+        # a broken deployment.
+        candidates = [self.model]
+        if STT_FALLBACK_MODEL not in candidates:
+            candidates.append(STT_FALLBACK_MODEL)
+
+        response = None
+        for attempt, model in enumerate(candidates):
+            try:
+                # response_format is left at its default: the gateway mishandles
+                # "text" by nesting the whole JSON body inside the text field.
+                response = await client.with_options(
+                    timeout=STT_TIMEOUT
+                ).audio.transcriptions.create(
+                    file=("audio.wav", wav_audio, "audio/wav"),
+                    model=model,
+                    language=metadata.language.split("-")[0],
+                    # temperature 0 keeps the model on the transcription task;
+                    # the prompt biases it towards the house vocabulary (it is a
+                    # hint, not an instruction the model must follow).
+                    temperature=0,
+                    prompt=STT_PROMPT,
                 )
-            else:
-                LOGGER.error("Error talking to transcription API: %s", err)
-            return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
-        except openai.APITimeoutError:
-            LOGGER.error("Transcription timed out after %s seconds", STT_TIMEOUT)
-            return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
-        except openai.OpenAIError as err:
-            LOGGER.error("Error talking to transcription API: %s", err)
+                if attempt:
+                    LOGGER.warning(
+                        "Transcribed with fallback model %s: configured model %s "
+                        "is unavailable. Fix the deployment or reconfigure the "
+                        "speech-to-text entity",
+                        model,
+                        self.model,
+                    )
+                break
+            # AuthenticationError and PermissionDeniedError subclass
+            # APIStatusError, which subclasses OpenAIError, so this ordering
+            # (auth -> APIStatusError -> APITimeoutError -> OpenAIError) is
+            # load-bearing: reordering it silently breaks the reauth path.
+            except (openai.AuthenticationError, openai.PermissionDeniedError) as err:
+                LOGGER.error("Authentication failed during transcription: %s", err)
+                self.entry.async_start_reauth(self.hass)
+                return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
+            except openai.APIStatusError as err:
+                if err.status_code == 404:
+                    LOGGER.error(
+                        "Model %s does not support transcription. Reconfigure the "
+                        "speech-to-text entity to use an audio model",
+                        model,
+                    )
+                else:
+                    LOGGER.error(
+                        "Error talking to transcription API (%s): %s", model, err
+                    )
+            except openai.APITimeoutError:
+                # No fallback attempt: the pipeline already burned its budget,
+                # a second full timeout would double the silence.
+                LOGGER.error("Transcription timed out after %s seconds", STT_TIMEOUT)
+                return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
+            except openai.OpenAIError as err:
+                LOGGER.error("Error talking to transcription API (%s): %s", model, err)
+
+        if response is None:
             return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
 
         text = (response.text or "").strip()
