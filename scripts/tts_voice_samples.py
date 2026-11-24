@@ -29,6 +29,8 @@ STYLES = {
     "qwen-warm-frau": "Eine warme, freundliche deutsche Frauenstimme, ruhiges Tempo.",
     "qwen-ruhig-mann": "Eine tiefe, ruhige deutsche Männerstimme, sachlich und gelassen.",
     "qwen-hell-frau": "Eine junge, helle deutsche Frauenstimme, lebhaft und freundlich.",
+    "qwen-warm-mann": "Eine warme, freundliche deutsche Männerstimme, ruhiges Tempo.",
+    "qwen-warm-mann-tief": "Eine warme, tiefe deutsche Männerstimme, ruhig und zugewandt, langsames Tempo.",
 }
 
 
