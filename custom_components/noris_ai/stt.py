@@ -217,7 +217,11 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
                     )
             except openai.APITimeoutError:
                 # No fallback attempt: the pipeline already burned its budget,
-                # a second full timeout would double the silence.
+                # a second full timeout would double the silence. But open the
+                # breaker, or a primary that times out instead of failing fast
+                # would ruin every turn without the fallback ever serving.
+                if model == self.model and has_distinct_fallback:
+                    self._breaker_open_until = time.monotonic() + STT_BREAKER_COOLDOWN_S
                 LOGGER.error("Transcription timed out after %s seconds", STT_TIMEOUT)
                 return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
             except openai.OpenAIError as err:
