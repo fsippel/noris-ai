@@ -204,12 +204,28 @@ Der Header aus M1 ist ein Opt-in pro Request und ändert das Verhalten anderer C
 
 ## 9. Was wir auf unserer Seite tun
 
+**Erledigt (noris_ai 0.6.6, Commit `fdb293a`):** Die Integration setzt den Opt-in
+jetzt selbst. `speech_request_kwargs()` in `custom_components/noris_ai/tts.py`
+hängt `x-bf-passthrough-extra-params: true` plus `task_type`, `instructions` und
+`language` an jede Anfrage eines VoiceDesign-Modells; für Kokoro und CosyVoice
+bleibt der Request unverändert (leeres Dict). Damit braucht Home Assistant keine
+Server-Änderung.
+
+Nachweis mit genau diesen Kwargs gegen `https://ai.noris.de/v1/audio/speech`
+(`scripts/tts_voicedesign_smoke.py`, 2026-11-24 11:56 UTC): HTTP 200, 157.484
+Byte, `pcm_s16le`/24 kHz/mono, 3,28 s; STT-Roundtrip über Nemotron liefert
+„Guten Abend. Der Timer läuft in zehn Minuten ab." wortgleich zurück.
+
+Damit verschiebt sich der Charakter von M3: Es ist keine Voraussetzung mehr für
+uns, sondern Komfort für alle anderen Clients (curl, n8n, Drittanbieter), die
+sonst denselben Header setzen müssen.
+
 - Repro und Abnahmeskript: `scripts/qwen3_tts_repro.py` prüft A1–A4 und gibt bei Abweichung Exit 1 zurück.
 - Bis zur Stimmabnahme bleibt Home Assistant auf Kokoro; keine Umstellung der Produktion auf ein ungeprüftes VoiceDesign-Preset.
 - Nach Abnahme: Stimme per `instructions` festlegen, Latenz und Verständlichkeit gegen Kokoro messen, dann erst umstellen.
 
 ## 10. Entscheidung erbeten
 
-1. **M3 umsetzen** (empfohlen) oder Clients den Header senden lassen?
+1. **M3 umsetzen?** Nicht mehr nötig für uns (Header ist im Client), aber es erspart allen anderen Clients den Header. Empfehlung: ja, eine Zeile.
 2. Soll M4 (Allowlist) parallel vorbereitet werden, falls generisches Passthrough unerwünscht ist?
 3. Welcher Gateway-Build läuft aktuell? Die Zeilennummern oben beziehen sich auf `main` @ `36235d0`; bei einem älteren Build kann das Merge-Gate fehlen — dann ist M3 der kürzeste Weg.
