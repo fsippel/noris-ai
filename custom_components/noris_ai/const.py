@@ -169,7 +169,12 @@ TTS_VOICEDESIGN_TASK_TYPE = "VoiceDesign"
 TTS_VOICEDESIGN_LANGUAGE = "German"
 # Style is the only lever for the timbre: the checkpoint ships no German
 # presets, so the description is the voice.
-TTS_VOICEDESIGN_STYLE = "Eine warme, freundliche deutsche Frauenstimme, ruhiges Tempo."
+TTS_VOICEDESIGN_STYLE = (
+    "Eine warme, tiefe deutsche Männerstimme, ruhig und zugewandt, zügiges Tempo."
+)
+# The style text nudges tempo only weakly and not reproducibly; atempo makes it
+# measurable (1.10 ≈ 10 % shorter utterance, ffmpeg costs 20-35 ms).
+TTS_VOICEDESIGN_SPEED = 1.10
 
 # Optional post-processing with ffmpeg (asetrate → pitch, atempo → tempo
 # restored) because the gateway exposes no pitch parameter. 0 disables it —

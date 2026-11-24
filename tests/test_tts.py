@@ -44,6 +44,7 @@ def _skip_pitch_shift(monkeypatch: pytest.MonkeyPatch) -> None:
         return audio
 
     monkeypatch.setattr(tts_platform, "shift_pitch", _identity)
+    monkeypatch.setattr(tts_platform, "change_speed", _identity)
 
 
 def test_pitch_filter_lowers_pitch_without_slowing() -> None:
@@ -285,7 +286,7 @@ def test_voicedesign_fields_travel_only_with_the_opt_in() -> None:
     assert kwargs["extra_headers"] == {"x-bf-passthrough-extra-params": "true"}
     assert kwargs["extra_body"] == {
         "task_type": "VoiceDesign",
-        "instructions": "Eine warme, freundliche deutsche Frauenstimme, ruhiges Tempo.",
+        "instructions": tts_platform.TTS_VOICEDESIGN_STYLE,
         "language": "German",
     }
 
@@ -323,3 +324,56 @@ async def test_voicedesign_request_reaches_the_gateway_opted_in(
     assert kwargs["extra_body"]["task_type"] == "VoiceDesign"
     assert kwargs["extra_body"]["language"] == "German"
     assert "task_type" not in kwargs
+
+
+def test_speed_filter_shortens_tempo_only() -> None:
+    """atempo changes speed without touching pitch; 1.0 means no pass."""
+    assert tts_platform.speed_filter(1.10) == "atempo=1.100000"
+    assert tts_platform.speed_filter(1.0) is None
+
+
+async def test_voicedesign_gets_the_tempo_pass(
+    hass: HomeAssistant, mock_client: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deeper VoiceDesign voice speaks 10 % faster than the checkpoint does."""
+    mock_client.audio.speech.create = AsyncMock(return_value=_binary(WAV))
+    speed = AsyncMock(return_value=WAV)
+    monkeypatch.setattr(tts_platform, "change_speed", speed)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="noris AI",
+        data={CONF_API_KEY: "sk-bf-test"},
+        subentries_data=[
+            ConfigSubentryData(
+                data={CONF_MODEL: "qwen3-TTS/qsu/qwen3-tts-voicedesign"},
+                subentry_type=TTS_SUBENTRY_TYPE,
+                title=DEFAULT_TTS_NAME,
+                unique_id=None,
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+    await setup_integration(hass, entry)
+
+    _, audio = await _entity(hass, entry).async_get_tts_audio("Hallo.", "de", {})
+
+    speed.assert_awaited_once()
+    assert speed.await_args.args[0] == WAV
+    assert audio == WAV
+
+
+async def test_cosyvoice_keeps_its_natural_tempo(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only VoiceDesign is sped up; every other model is left alone."""
+    mock_client.audio.speech.create = AsyncMock(return_value=_binary(WAV))
+    speed = AsyncMock(return_value=WAV)
+    monkeypatch.setattr(tts_platform, "change_speed", speed)
+    await setup_integration(hass, mock_config_entry)
+
+    await _entity(hass, mock_config_entry).async_get_tts_audio("Hallo.", "de", {})
+
+    speed.assert_not_awaited()

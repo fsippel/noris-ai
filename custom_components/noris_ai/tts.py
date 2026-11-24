@@ -25,6 +25,7 @@ from .const import (
     TTS_VOICE,
     TTS_VOICEDESIGN_LANGUAGE,
     TTS_VOICEDESIGN_PATTERN,
+    TTS_VOICEDESIGN_SPEED,
     TTS_VOICEDESIGN_STYLE,
     TTS_VOICEDESIGN_TASK_TYPE,
     TTS_VOICEDESIGN_VOICE,
@@ -76,15 +77,22 @@ def speech_request_kwargs(model: str) -> dict[str, Any]:
     }
 
 
-async def shift_pitch(audio: bytes) -> bytes:
-    """Return the WAV body with its pitch lowered, or the input on any failure.
+def speed_filter(factor: float = TTS_VOICEDESIGN_SPEED) -> str | None:
+    """Return the ffmpeg filter that speeds the audio up, or None to skip.
+
+    atempo changes tempo only; pitch stays untouched, unlike asetrate.
+    """
+    if factor <= 0 or factor == 1:
+        return None
+    return f"atempo={factor:.6f}"
+
+
+async def _ffmpeg_filter(audio: bytes, audio_filter: str, purpose: str) -> bytes:
+    """Return the WAV body with audio_filter applied, or the input on failure.
 
     Never raises: a missing or unhappy ffmpeg degrades to the original voice
     rather than silencing the assistant.
     """
-    if not TTS_PITCH_SEMITONES:
-        return audio
-
     args = [
         "ffmpeg",
         "-nostdin",
@@ -95,7 +103,7 @@ async def shift_pitch(audio: bytes) -> bytes:
         "-i",
         "pipe:0",
         "-af",
-        pitch_filter(),
+        audio_filter,
         "-ac",
         "1",
         "-ar",
@@ -112,18 +120,34 @@ async def shift_pitch(audio: bytes) -> bytes:
             stderr=asyncio.subprocess.PIPE,
         )
     except (FileNotFoundError, NotImplementedError) as err:
-        LOGGER.warning("ffmpeg unavailable, keeping the unshifted voice: %s", err)
+        LOGGER.warning("ffmpeg unavailable, keeping the original voice: %s", err)
         return audio
 
-    shifted, errout = await process.communicate(audio)
-    if process.returncode != 0 or not shifted:
+    filtered, errout = await process.communicate(audio)
+    if process.returncode != 0 or not filtered:
         LOGGER.warning(
-            "Pitch shift failed (rc=%s), keeping the unshifted voice: %s",
+            "%s failed (rc=%s), keeping the original voice: %s",
+            purpose,
             process.returncode,
             errout[:200],
         )
         return audio
-    return shifted
+    return filtered
+
+
+async def shift_pitch(audio: bytes) -> bytes:
+    """Return the WAV body with its pitch lowered, or the input unchanged."""
+    if not TTS_PITCH_SEMITONES:
+        return audio
+    return await _ffmpeg_filter(audio, pitch_filter(), "Pitch shift")
+
+
+async def change_speed(audio: bytes, factor: float = TTS_VOICEDESIGN_SPEED) -> bytes:
+    """Return the WAV body played faster, or the input unchanged."""
+    audio_filter = speed_filter(factor)
+    if audio_filter is None:
+        return audio
+    return await _ffmpeg_filter(audio, audio_filter, "Speed change")
 
 
 async def async_setup_entry(
@@ -233,4 +257,7 @@ class NorisAITtsEntity(tts.TextToSpeechEntity, NorisAISubentryEntity):
         LOGGER.debug(
             "Synthesised %d characters into %d bytes", len(message), len(audio)
         )
-        return "wav", await shift_pitch(audio)
+        audio = await shift_pitch(audio)
+        if TTS_VOICEDESIGN_PATTERN.search(self.model):
+            audio = await change_speed(audio)
+        return "wav", audio
