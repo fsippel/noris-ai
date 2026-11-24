@@ -23,5 +23,5 @@
     "openai>=2.21.0",
     "voluptuous-openapi>=0.0.13"
   ],
-  "version": "0.6.9"
+  "version": "0.7.0"
 }
