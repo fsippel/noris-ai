@@ -2,14 +2,19 @@
 
 from unittest.mock import MagicMock
 
+import httpx
 from openai import APIConnectionError, AuthenticationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.noris_ai import _create_client
 from custom_components.noris_ai.const import (
     AI_TASK_SUBENTRY_TYPE,
+    CONNECT_TIMEOUT,
     CONVERSATION_SUBENTRY_TYPE,
     DEFAULT_CONVERSATION_NAME,
     DOMAIN,
+    MAX_RETRIES,
+    REQUEST_TIMEOUT,
 )
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_API_KEY, CONF_MODEL
@@ -87,3 +92,19 @@ async def test_migrate_entry_retitles_model_id_subentries(
     titles = {s.subentry_type: s.title for s in entry.subentries.values()}
     assert titles[CONVERSATION_SUBENTRY_TYPE] == DEFAULT_CONVERSATION_NAME
     assert titles[AI_TASK_SUBENTRY_TYPE] == "Mein Extraktor"
+
+
+async def test_client_bounds_request_timeout_and_retries(hass: HomeAssistant) -> None:
+    """A stalled gateway must fail fast instead of hanging a voice satellite.
+
+    Handing the SDK Home Assistant's shared httpx client is not enough: that
+    client carries httpx's *default* timeout, which the SDK treats structurally
+    as "no timeout given" and replaces with its own 600 s default. An
+    unanswered chat completion then pins an Assist pipeline in ``processing``
+    for minutes, while the device refuses to wake. STT and TTS bound themselves
+    per request; the chat path has only what the client carries.
+    """
+    client = _create_client(hass, "sk-bf-test")
+
+    assert client.timeout == httpx.Timeout(REQUEST_TIMEOUT, connect=CONNECT_TIMEOUT)
+    assert client.max_retries == MAX_RETRIES
