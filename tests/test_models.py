@@ -18,7 +18,14 @@ from homeassistant.helpers.selector import SelectOptionDict
 
 
 def _model(model_id: str, **extra) -> Model:
-    return Model.model_validate({"id": model_id, "object": "model", **extra})
+    payload = {
+        "id": model_id,
+        "object": "model",
+        "created": 0,
+        "owned_by": "noris",
+        **extra,
+    }
+    return Model.model_validate(payload)
 
 
 def test_nemotron_transcribe_counts_as_stt_model() -> None:

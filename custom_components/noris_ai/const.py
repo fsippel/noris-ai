@@ -156,6 +156,21 @@ TTS_MODEL_PATTERN = re.compile(
 # house speaks, so the German speaker is the default.
 TTS_VOICE = "default"
 
+# Qwen3-TTS VoiceDesign takes three fields the gateway does not know: task_type,
+# the style text (instructions) and language. It treats them as unknown and
+# forwards them ONLY when the client opts in with this header (measured
+# 2026-11-24: identical payload -> 400 "does not support task_type='CustomVoice'"
+# without the header, 200 + WAV with it). The header value must be exactly
+# "true". Sending it per request keeps the opt-in local to speech synthesis.
+TTS_PASSTHROUGH_HEADER = "x-bf-passthrough-extra-params"
+TTS_VOICEDESIGN_PATTERN = re.compile(r"qwen3.*tts.*voicedesign", re.IGNORECASE)
+TTS_VOICEDESIGN_VOICE = "vivian"
+TTS_VOICEDESIGN_TASK_TYPE = "VoiceDesign"
+TTS_VOICEDESIGN_LANGUAGE = "German"
+# Style is the only lever for the timbre: the checkpoint ships no German
+# presets, so the description is the voice.
+TTS_VOICEDESIGN_STYLE = "Eine warme, freundliche deutsche Frauenstimme, ruhiges Tempo."
+
 # Optional post-processing with ffmpeg (asetrate → pitch, atempo → tempo
 # restored) because the gateway exposes no pitch parameter. 0 disables it —
 # and 0 is what a low-latency pipeline wants: every extra ffmpeg pass costs

@@ -16,12 +16,18 @@ from . import NorisAIConfigEntry
 from .const import (
     LOGGER,
     TTS_DEFAULT_LANGUAGE,
+    TTS_PASSTHROUGH_HEADER,
     TTS_PITCH_SEMITONES,
     TTS_PRONUNCIATIONS,
     TTS_SAMPLE_RATE,
     TTS_SUBENTRY_TYPE,
     TTS_TIMEOUT,
     TTS_VOICE,
+    TTS_VOICEDESIGN_LANGUAGE,
+    TTS_VOICEDESIGN_PATTERN,
+    TTS_VOICEDESIGN_STYLE,
+    TTS_VOICEDESIGN_TASK_TYPE,
+    TTS_VOICEDESIGN_VOICE,
 )
 from .entity import NorisAISubentryEntity
 from .helpers import tts_languages_for_model
@@ -47,6 +53,27 @@ def pitch_filter(sample_rate: int = TTS_SAMPLE_RATE) -> str:
         f"asetrate={sample_rate}*{factor:.6f},"
         f"aresample={sample_rate},atempo={1 / factor:.6f}"
     )
+
+
+def speech_request_kwargs(model: str) -> dict[str, Any]:
+    """Return the per-model fields a speech request needs.
+
+    VoiceDesign checkpoints carry no German presets: the timbre comes from the
+    style text, so the request has to name task_type, instructions and language.
+    The gateway treats all three as unknown fields and forwards them only with
+    the passthrough header, hence the header travels with the request.
+    """
+    if not TTS_VOICEDESIGN_PATTERN.search(model):
+        return {}
+    return {
+        "voice": TTS_VOICEDESIGN_VOICE,
+        "extra_headers": {TTS_PASSTHROUGH_HEADER: "true"},
+        "extra_body": {
+            "task_type": TTS_VOICEDESIGN_TASK_TYPE,
+            "instructions": TTS_VOICEDESIGN_STYLE,
+            "language": TTS_VOICEDESIGN_LANGUAGE,
+        },
+    }
 
 
 async def shift_pitch(audio: bytes) -> bytes:
@@ -154,18 +181,22 @@ class NorisAITtsEntity(tts.TextToSpeechEntity, NorisAISubentryEntity):
         """
         client = self.entry.runtime_data
 
+        # response_format is sent for correctness even though the gateway
+        # ignores it and always returns WAV. voice is required by the gateway;
+        # its value is ignored by Kokoro (see TTS_VOICE) but selects the
+        # speaker on CosyVoice and VoiceDesign models.
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "input": spoken_text(message),
+            "voice": TTS_VOICE,
+            "response_format": "wav",
+        }
+        kwargs.update(speech_request_kwargs(self.model))
+
         try:
-            # response_format is sent for correctness even though the gateway
-            # ignores it and always returns WAV. voice is required by the
-            # gateway but its value is ignored — see TTS_VOICE.
             response = await client.with_options(
                 timeout=TTS_TIMEOUT
-            ).audio.speech.create(
-                model=self.model,
-                input=spoken_text(message),
-                voice=TTS_VOICE,
-                response_format="wav",
-            )
+            ).audio.speech.create(**kwargs)
         # AuthenticationError and PermissionDeniedError subclass APIStatusError,
         # which subclasses OpenAIError, so this ordering (auth -> APIStatusError
         # -> APITimeoutError -> OpenAIError) is load-bearing: reordering it

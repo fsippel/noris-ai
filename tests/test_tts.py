@@ -16,8 +16,17 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.noris_ai import tts as tts_platform
-from custom_components.noris_ai.const import TTS_PITCH_SEMITONES, TTS_TIMEOUT, TTS_VOICE
+from custom_components.noris_ai.const import (
+    DEFAULT_TTS_NAME,
+    DOMAIN,
+    TTS_PITCH_SEMITONES,
+    TTS_SUBENTRY_TYPE,
+    TTS_TIMEOUT,
+    TTS_VOICE,
+)
 from homeassistant.components import tts
+from homeassistant.config_entries import ConfigSubentryData
+from homeassistant.const import CONF_API_KEY, CONF_MODEL
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
@@ -265,3 +274,52 @@ def test_product_names_are_respelled_for_the_german_voice() -> None:
     assert (
         tts_platform.spoken_text("Kein Produktname hier.") == "Kein Produktname hier."
     )
+
+
+def test_voicedesign_fields_travel_only_with_the_opt_in() -> None:
+    """A VoiceDesign model needs task_type, style, language — and the header."""
+    assert tts_platform.speech_request_kwargs("Kokoro-TTS/release/kokoro-tts-de") == {}
+
+    kwargs = tts_platform.speech_request_kwargs("qwen3-TTS/qsu/qwen3-tts-voicedesign")
+    assert kwargs["voice"] == "vivian"
+    assert kwargs["extra_headers"] == {"x-bf-passthrough-extra-params": "true"}
+    assert kwargs["extra_body"] == {
+        "task_type": "VoiceDesign",
+        "instructions": "Eine warme, freundliche deutsche Frauenstimme, ruhiges Tempo.",
+        "language": "German",
+    }
+
+
+async def test_voicedesign_request_reaches_the_gateway_opted_in(
+    hass: HomeAssistant, mock_client: AsyncMock
+) -> None:
+    """Without the header the gateway answers 400; the entity must always send it."""
+    mock_client.audio.speech.create = AsyncMock(return_value=_binary(WAV))
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="noris AI",
+        data={CONF_API_KEY: "sk-bf-test"},
+        subentries_data=[
+            ConfigSubentryData(
+                data={CONF_MODEL: "qwen3-TTS/qsu/qwen3-tts-voicedesign"},
+                subentry_type=TTS_SUBENTRY_TYPE,
+                title=DEFAULT_TTS_NAME,
+                unique_id=None,
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+    await setup_integration(hass, entry)
+
+    extension, audio = await _entity(hass, entry).async_get_tts_audio(
+        "Der Timer läuft in zehn Minuten ab.", "de", {}
+    )
+
+    assert extension == "wav"
+    assert audio == WAV
+    kwargs = mock_client.audio.speech.create.call_args.kwargs
+    assert kwargs["voice"] == "vivian"
+    assert kwargs["extra_headers"] == {"x-bf-passthrough-extra-params": "true"}
+    assert kwargs["extra_body"]["task_type"] == "VoiceDesign"
+    assert kwargs["extra_body"]["language"] == "German"
+    assert "task_type" not in kwargs
