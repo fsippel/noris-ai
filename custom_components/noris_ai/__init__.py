@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import httpx
 from openai import AsyncOpenAI, AuthenticationError, OpenAIError, PermissionDeniedError
 
 from homeassistant.config_entries import ConfigEntry
@@ -13,12 +14,15 @@ from homeassistant.helpers.httpx_client import get_async_client
 from .const import (
     AI_TASK_SUBENTRY_TYPE,
     BASE_URL,
+    CONNECT_TIMEOUT,
     CONVERSATION_SUBENTRY_TYPE,
     DEFAULT_AI_TASK_NAME,
     DEFAULT_CONVERSATION_NAME,
     DEFAULT_STT_NAME,
     DEFAULT_TTS_NAME,
     LOGGER,
+    MAX_RETRIES,
+    REQUEST_TIMEOUT,
     STT_SUBENTRY_TYPE,
     TTS_SUBENTRY_TYPE,
 )
@@ -48,11 +52,17 @@ def _create_client(hass: HomeAssistant, api_key: str) -> AsyncOpenAI:
     The gateway accepts standard Bearer authentication, so the key goes
     straight into ``api_key``. TLS is verified through Home Assistant's
     shared httpx client.
+
+    ``timeout`` and ``max_retries`` must be passed explicitly. The shared
+    httpx client carries httpx's default timeout, which the SDK reads as
+    "unset" and replaces with its own 600 s default — see ``REQUEST_TIMEOUT``.
     """
     return AsyncOpenAI(
         base_url=BASE_URL,
         api_key=api_key,
         http_client=get_async_client(hass),
+        timeout=httpx.Timeout(REQUEST_TIMEOUT, connect=CONNECT_TIMEOUT),
+        max_retries=MAX_RETRIES,
     )
 
 

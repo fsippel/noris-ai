@@ -139,6 +139,23 @@ STT_SUPPORTED_LANGUAGES = [
 # fails promptly instead of hanging a voice satellite.
 TTS_TIMEOUT = 30.0
 
+# Bounds every request the shared client makes unless the call overrides it
+# (STT and TTS do, via ``with_options``). It exists for the chat path, which
+# has no per-request bound of its own: handing the SDK Home Assistant's shared
+# httpx client is NOT enough, because that client carries httpx's *default*
+# timeout and the SDK's check is structural — a client whose timeout equals the
+# httpx default counts as "no timeout given" and is replaced by the SDK's own
+# 600 s default. A gateway that accepts the connection and then never answers
+# would hold an Assist pipeline in "processing" for minutes while the voice
+# satellite refuses to wake. A voice turn that takes longer than a minute is
+# useless anyway, so fail the turn instead.
+REQUEST_TIMEOUT = 60.0
+CONNECT_TIMEOUT = 5.0
+
+# One retry, not the SDK's two: a retried voice turn costs another full
+# REQUEST_TIMEOUT before the user hears anything.
+MAX_RETRIES = 1
+
 # Speech capability CANNOT be read from the model catalog either: every audio
 # model is stamped with the default text-in/text-out chat template, so speech
 # models are matched by name. Delete this in favour of output_modalities once
