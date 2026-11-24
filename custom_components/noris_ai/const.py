@@ -174,9 +174,10 @@ TTS_PRONUNCIATIONS: tuple[tuple[str, str], ...] = (
     ("Home-Assistant", "Houm Ässisstänt"),
 )
 
-# Hint sent with every transcription. Voxtral has no vocabulary of its own, so
-# domain words help it pick "PV-Ertrag" over "felsenbagger". It is a hint: the
-# model stays free to transcribe whatever it hears.
+# Hint sent with every transcription. NOTE (measured 2026-11-24): the gateway
+# drops this field — a nonsense prompt yields a byte-identical transcript, and
+# hotwords/word_boosting/context/initial_prompt are ignored too. Kept only so a
+# future model that honours it gets the vocabulary for free.
 STT_PROMPT = (
     "Transkribiere wörtlich auf Deutsch. Fachbegriffe: Photovoltaik, PV-Ertrag, "
     "Kilowattstunden, Kilowatt, Speicher, Netzfluss, Küche, Schlafzimmer, "

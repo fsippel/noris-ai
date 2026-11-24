@@ -171,9 +171,12 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
                     file=("audio.wav", wav_audio, "audio/wav"),
                     model=model,
                     language=metadata.language.split("-")[0],
-                    # temperature 0 keeps the model on the transcription task;
-                    # the prompt biases it towards the house vocabulary (it is a
-                    # hint, not an instruction the model must follow).
+                    # temperature 0 keeps the model on the transcription task.
+                    # The prompt is sent for forward compatibility only: measured
+                    # 2026-11-24, this gateway appears to DROP it — a garbage
+                    # prompt produced a byte-identical transcript, and so did
+                    # hotwords/word_boosting/context/initial_prompt (all ignored).
+                    # Do not rely on prompt-based vocabulary biasing here.
                     temperature=0,
                     prompt=STT_PROMPT,
                 )
