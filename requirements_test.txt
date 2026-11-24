@@ -3,6 +3,7 @@ openai>=2.21.0
 voluptuous-openapi
 
 # Pulled in by the conversation/ai_task components (manifest dependencies)
+gazetteer-matcher
 hassil
 home-assistant-intents
 PyTurboJPEG
