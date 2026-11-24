@@ -2,7 +2,7 @@
 
 **English Summary**
 
-A custom Home Assistant integration for the **ai.noris.de** Bifrost gateway. Adds a **Conversation agent** (for Assist / voice control), an **AI Task** entity (structured data generation for automations), a **Speech-to-text** entity (transcribe Assist commands) and a **Text-to-speech** entity (speak through the gateway's speech models). Built on the OpenAI-compatible Chat Completions, transcription and speech APIs with standard Bearer authentication. All gateway models are selectable (`vllm/*` listed first); only `vllm/*` models run on-premises. Reranker and draft models are filtered out, and audio/speech models are no longer offered as chat models. Default model: `vllm/gpt-oss-120b`.
+A custom Home Assistant integration for the **ai.noris.de** Bifrost gateway. Adds a **Conversation agent** (for Assist / voice control), an **AI Task** entity (structured data generation for automations), a **Speech-to-text** entity (transcribe Assist commands) and a **Text-to-speech** entity (speak through the gateway's speech models). Built on the OpenAI-compatible Chat Completions, transcription and speech APIs with standard Bearer authentication. All gateway models are selectable (`vllm/*` listed first). Reranker and draft models are filtered out, and audio/speech models are no longer offered as chat models. Default model: `vllm/gpt-oss-120b`.
 
 ---
 
@@ -13,7 +13,7 @@ Die **noris AI**-Integration für Home Assistant erweitert dein Smart Home um vi
 1. **Conversation Agent** — ein KI-basierter Sprach- und Textassistent für Home Assistant Assist. Du kannst Fragen stellen, Geräte steuern und Automationen auslösen.
 2. **AI Task** — eine Entity für strukturierte und freie Datengenerierung. Nützlich für Automationen, die KI-basierte Eingaben brauchen (z. B. Datenextraktion, Klassenbildung, Synthesis).
 3. **Speech-to-text** — Transkription von Assist-Sprachbefehlen über die Audio-Modelle des Gateways (Voxtral).
-4. **Text-to-speech** — Sprachausgabe über die Speech-Modelle des Gateways (Kokoro, CosyVoice3).
+4. **Text-to-speech** — Sprachausgabe über die Speech-Modelle des Gateways (Kokoro, CosyVoice3, Qwen3-TTS VoiceDesign).
 
 Beide Funktionen laufen über das **Bifrost-Gateway** (`https://ai.noris.de/v1`) der noris network AG — eine OpenAI-kompatible API mit Zugriff auf lokale (`vllm/*`) und externe Modelle.
 
@@ -74,7 +74,7 @@ Ein JSON-Schema für strukturierte Ausgaben wird nicht in diesem Flow konfigurie
 
 1. Klick auf **Add speech-to-text service**.
 2. Gib einen **Namen** an (z. B. `noris_stt`).
-3. Wähle ein Audio-Modell — der Picker zeigt nur Modelle, die tatsächlich transkribieren können. Aktuell ist das ausschließlich `vllm/qsu/voxtral-small-24b-2507`.
+3. Wähle ein Audio-Modell — der Picker zeigt nur Modelle, die tatsächlich transkribieren können. Aktuell sind das `vllm/qsu/nemotron-3.5-transcribe` und `vllm/qsu/voxtral-small-24b-2507`.
 4. Trage die Entity anschließend in deiner Assist-Pipeline als **Speech-to-text** ein.
 
 #### Text-to-speech hinzufügen
@@ -93,11 +93,13 @@ Beide Sprachplattformen hängen an den Audio-Endpunkten des Gateways (`/v1/audio
 - Audio wird als **16 kHz, mono, 16 Bit PCM in einem WAV-Container** gesendet. Der Gateway lehnt headerloses PCM mit „Invalid or unsupported audio file" ab, deshalb packt die Integration die Samples vor dem Upload in ein WAV.
 - Unterstützte Sprachen sind die von Voxtral dokumentierten: Deutsch, Englisch, Spanisch, Französisch, Italienisch, Niederländisch, Portugiesisch und Hindi (siehe `STT_SUPPORTED_LANGUAGES`).
 - **Modellerkennung:** Der Katalog meldet Audio-Fähigkeiten falsch (Voxtral erscheint dort als Text-Modell), deshalb werden Audio-Modelle am Namen erkannt (`AUDIO_MODEL_PATTERN`). Kommt ein neues Audio-Modell hinzu, das nicht erkannt wird, ist das Muster zu erweitern — nicht die Modality-Metadaten zu glauben.
+- **Fallback und Circuit-Breaker:** Antwortet das gewählte Modell mit einem 5xx (z. B. 503, solange es kalt ist), springt `vllm/qsu/voxtral-small-24b-2507` als Fallback ein. Nach einem Fehlversuch bedient der Fallback für `STT_BREAKER_COOLDOWN_S` (120 s) allein, dann wird das primäre Modell erneut probiert.
 
 ### Text-to-speech
 
 - Die Ausgabe kommt als **24 kHz mono WAV** zurück.
-- Das Gateway **verlangt** ein `voice`-Feld (sonst `400 voice is required for speech completion`), **ignoriert** seinen Wert aber: `martin`, `alloy` und eine Fantasie-Zeichenkette liefern byte-identisches Audio. Jedes Modell hat genau eine Stimme, deshalb gibt es keinen Voice-Picker.
+- Das Gateway **verlangt** ein `voice`-Feld (sonst `400 voice is required for speech completion`), **ignoriert** seinen Wert aber bei Kokoro/CosyVoice3: `martin`, `alloy` und eine Fantasie-Zeichenkette liefern byte-identisches Audio. Diese Modelle haben genau eine Stimme, deshalb gibt es keinen Voice-Picker.
+- **Qwen3-TTS VoiceDesign** ist die Ausnahme: Hier erreichen `voice`, `task_type` und `instructions` den Provider (die Integration sendet dafür den Opt-in-Header `x-bf-passthrough-extra-params`). Stimme, Stil und Tempo sind als Produktentscheidung in `const.py` fixiert, kein Config-Flow-Feld. Die Ausgabe wird in einem ffmpeg-Durchlauf nachbearbeitet (Tempo + Loudness-Normalisierung); fehlt ffmpeg, wird das Original-Audio unverändert ausgegeben.
 - **Sprachabdeckung** wird aus dem Modellnamen abgeleitet (`TTS_LANGUAGES_BY_PATTERN`), weil der Katalog keine Sprachdaten liefert. Beansprucht werden nur verifizierte Sprachen; die deutsche Kokoro-Stimme spricht kein Englisch, CosyVoice3 kann beides.
 - **Gemessene Latenz** (live, aus Deutschland): Kokoro ~1,0 s für einen kurzen deutschen Satz. CosyVoice3 antwortete im Test mit `voice=default` **nicht** innerhalb von 60 s — vor dem produktiven Einsatz erneut prüfen, sonst läuft die Pipeline in den `TTS_TIMEOUT` (30 s).
 
