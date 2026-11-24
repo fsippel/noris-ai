@@ -1,12 +1,11 @@
-pytest-homeassistant-custom-component==0.13.375
+pytest-homeassistant-custom-component
 openai>=2.21.0
 voluptuous-openapi
 
 # Pulled in by the conversation/ai_task/stt/tts components (manifest dependencies)
-gazetteer_matcher
+gazetteer-matcher
 hassil
 home-assistant-intents
 ha-ffmpeg
 mutagen
 PyTurboJPEG
-ruff==0.16.3

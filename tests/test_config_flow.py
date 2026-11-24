@@ -148,6 +148,8 @@ async def test_conversation_subentry_advanced(
             CONF_NAME: "Tuning-Agent",
             CONF_MODEL: "vllm/release/glm-5-2",
             CONF_RECOMMENDED: False,
+            # The prompt lives in the init step since 3612662, not in advanced.
+            "prompt": "Du bist knapp.",
         },
     )
     assert result["type"] is FlowResultType.FORM
