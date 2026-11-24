@@ -24,6 +24,7 @@ from .const import (
     TTS_TIMEOUT,
     TTS_VOICE,
     TTS_VOICEDESIGN_LANGUAGE,
+    TTS_VOICEDESIGN_LOUDNESS,
     TTS_VOICEDESIGN_PATTERN,
     TTS_VOICEDESIGN_SPEED,
     TTS_VOICEDESIGN_STYLE,
@@ -77,14 +78,21 @@ def speech_request_kwargs(model: str) -> dict[str, Any]:
     }
 
 
-def speed_filter(factor: float = TTS_VOICEDESIGN_SPEED) -> str | None:
-    """Return the ffmpeg filter that speeds the audio up, or None to skip.
+def voicedesign_filter(
+    speed: float = TTS_VOICEDESIGN_SPEED,
+    loudness: str = TTS_VOICEDESIGN_LOUDNESS,
+) -> str | None:
+    """Return the ffmpeg chain VoiceDesign audio needs, or None to skip.
 
-    atempo changes tempo only; pitch stays untouched, unlike asetrate.
+    atempo changes tempo only (pitch stays untouched, unlike asetrate) and
+    loudnorm lifts the checkpoint's low output to Kokoro's level.
     """
-    if factor <= 0 or factor == 1:
-        return None
-    return f"atempo={factor:.6f}"
+    filters: list[str] = []
+    if speed > 0 and speed != 1:
+        filters.append(f"atempo={speed:.6f}")
+    if loudness:
+        filters.append(loudness)
+    return ",".join(filters) or None
 
 
 async def _ffmpeg_filter(audio: bytes, audio_filter: str, purpose: str) -> bytes:
@@ -142,12 +150,12 @@ async def shift_pitch(audio: bytes) -> bytes:
     return await _ffmpeg_filter(audio, pitch_filter(), "Pitch shift")
 
 
-async def change_speed(audio: bytes, factor: float = TTS_VOICEDESIGN_SPEED) -> bytes:
-    """Return the WAV body played faster, or the input unchanged."""
-    audio_filter = speed_filter(factor)
+async def postprocess_voicedesign(audio: bytes) -> bytes:
+    """Return the WAV body faster and normalised, or the input unchanged."""
+    audio_filter = voicedesign_filter()
     if audio_filter is None:
         return audio
-    return await _ffmpeg_filter(audio, audio_filter, "Speed change")
+    return await _ffmpeg_filter(audio, audio_filter, "VoiceDesign post-processing")
 
 
 async def async_setup_entry(
@@ -259,5 +267,5 @@ class NorisAITtsEntity(tts.TextToSpeechEntity, NorisAISubentryEntity):
         )
         audio = await shift_pitch(audio)
         if TTS_VOICEDESIGN_PATTERN.search(self.model):
-            audio = await change_speed(audio)
+            audio = await postprocess_voicedesign(audio)
         return "wav", audio

@@ -173,8 +173,11 @@ TTS_VOICEDESIGN_STYLE = (
     "Eine warme, tiefe deutsche Männerstimme, ruhig und zugewandt, zügiges Tempo."
 )
 # The style text nudges tempo only weakly and not reproducibly; atempo makes it
-# measurable (1.10 ≈ 10 % shorter utterance, ffmpeg costs 20-35 ms).
+# measurable (1.10 ≈ 10 % shorter utterance). VoiceDesign lands 4-6 dB below
+# Kokoro, so one loudnorm pass puts it on par (-18.5 vs -18.7 dB mean) without
+# a manual media_player gain. Both filters cost ~100 ms together.
 TTS_VOICEDESIGN_SPEED = 1.10
+TTS_VOICEDESIGN_LOUDNESS = "loudnorm=I=-16:TP=-1.5:LRA=11"
 
 # Optional post-processing with ffmpeg (asetrate → pitch, atempo → tempo
 # restored) because the gateway exposes no pitch parameter. 0 disables it —

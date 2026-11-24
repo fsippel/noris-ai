@@ -44,7 +44,7 @@ def _skip_pitch_shift(monkeypatch: pytest.MonkeyPatch) -> None:
         return audio
 
     monkeypatch.setattr(tts_platform, "shift_pitch", _identity)
-    monkeypatch.setattr(tts_platform, "change_speed", _identity)
+    monkeypatch.setattr(tts_platform, "postprocess_voicedesign", _identity)
 
 
 def test_pitch_filter_lowers_pitch_without_slowing() -> None:
@@ -326,10 +326,14 @@ async def test_voicedesign_request_reaches_the_gateway_opted_in(
     assert "task_type" not in kwargs
 
 
-def test_speed_filter_shortens_tempo_only() -> None:
-    """atempo changes speed without touching pitch; 1.0 means no pass."""
-    assert tts_platform.speed_filter(1.10) == "atempo=1.100000"
-    assert tts_platform.speed_filter(1.0) is None
+def test_voicedesign_filter_speeds_up_and_normalises() -> None:
+    """atempo leaves the pitch alone; loudnorm closes the level gap to Kokoro."""
+    assert (
+        tts_platform.voicedesign_filter(1.10, "loudnorm=x")
+        == "atempo=1.100000,loudnorm=x"
+    )
+    assert tts_platform.voicedesign_filter(1.0, "loudnorm=x") == "loudnorm=x"
+    assert tts_platform.voicedesign_filter(1.0, "") is None
 
 
 async def test_voicedesign_gets_the_tempo_pass(
@@ -338,7 +342,7 @@ async def test_voicedesign_gets_the_tempo_pass(
     """The deeper VoiceDesign voice speaks 10 % faster than the checkpoint does."""
     mock_client.audio.speech.create = AsyncMock(return_value=_binary(WAV))
     speed = AsyncMock(return_value=WAV)
-    monkeypatch.setattr(tts_platform, "change_speed", speed)
+    monkeypatch.setattr(tts_platform, "postprocess_voicedesign", speed)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="noris AI",
@@ -368,10 +372,10 @@ async def test_cosyvoice_keeps_its_natural_tempo(
     mock_config_entry: MockConfigEntry,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only VoiceDesign is sped up; every other model is left alone."""
+    """Only VoiceDesign is post-processed; every other model is left alone."""
     mock_client.audio.speech.create = AsyncMock(return_value=_binary(WAV))
     speed = AsyncMock(return_value=WAV)
-    monkeypatch.setattr(tts_platform, "change_speed", speed)
+    monkeypatch.setattr(tts_platform, "postprocess_voicedesign", speed)
     await setup_integration(hass, mock_config_entry)
 
     await _entity(hass, mock_config_entry).async_get_tts_audio("Hallo.", "de", {})
