@@ -24,6 +24,7 @@ from openai.types.chat.chat_completion_message_function_tool_call_param import F
 from openai.types.shared_params import FunctionDefinition
 import voluptuous as vol
 from voluptuous_openapi import convert
+import probatio
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigSubentry
@@ -294,7 +295,19 @@ def _format_tool(
     custom_serializer: Callable[[Any], Any] | None,
 ) -> ChatCompletionFunctionToolParam:
     """Format tool specification."""
-    parameters = _safe_convert(tool.parameters, custom_serializer)
+    # HA 2026.9+ passes probatio schemas as tool parameters. Converting them
+    # through voluptuous_openapi (via _safe_convert) drops fields because the
+    # selector serializer emits UNSUPPORTED sentinels that _sanitize_schema
+    # silently removes - the model then receives tools without parameter
+    # definitions and has to guess argument names (observed with qwen3.8:
+    # media_player__search_media called with 'query'/'media_query' instead
+    # of 'search_query'). probatio.to_openapi is the supported conversion
+    # (same approach as HA core's Anthropic conversation agent).
+    parameters = probatio.to_openapi(
+        tool.parameters,
+        custom_serializer=custom_serializer,
+        openapi_version="3.1.0",
+    )
     tool_spec = FunctionDefinition(
         name=tool.name,
         parameters=parameters,
