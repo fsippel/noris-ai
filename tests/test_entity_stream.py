@@ -11,9 +11,8 @@ from openai.types.chat.chat_completion_chunk import (
 )
 import pytest
 
-from homeassistant.exceptions import HomeAssistantError
-
 from custom_components.noris_ai.entity import _ThinkTagFilter, _transform_stream
+from homeassistant.exceptions import HomeAssistantError
 
 
 def _chunk(
@@ -85,9 +84,7 @@ def test_think_filter_unclosed_tag_flushes_as_thinking() -> None:
 
 
 async def test_stream_content() -> None:
-    deltas = await _collect(
-        [_chunk("Hal"), _chunk("lo"), _chunk(None, finish="stop")]
-    )
+    deltas = await _collect([_chunk("Hal"), _chunk("lo"), _chunk(None, finish="stop")])
     assert deltas[0] == {"role": "assistant"}
     assert "".join(d.get("content", "") for d in deltas) == "Hallo"
 

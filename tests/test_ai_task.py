@@ -161,9 +161,7 @@ async def test_bad_request_without_structure_does_not_retry(
     response = MagicMock()
     response.status_code = 400
     mock_openai.chat.completions.create = AsyncMock(
-        side_effect=BadRequestError(
-            message="bad request", response=response, body=None
-        )
+        side_effect=BadRequestError(message="bad request", response=response, body=None)
     )
 
     with pytest.raises(HomeAssistantError):

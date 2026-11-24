@@ -11,7 +11,9 @@
   "config_flow": true,
   "dependencies": [
     "conversation",
-    "ai_task"
+    "ai_task",
+    "stt",
+    "tts"
   ],
   "documentation": "https://github.com/fsippel/noris-ai",
   "integration_type": "service",
@@ -21,5 +23,5 @@
     "openai>=2.21.0",
     "voluptuous-openapi>=0.0.13"
   ],
-  "version": "0.2.11"
+  "version": "0.7.0"
 }

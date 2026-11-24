@@ -2,12 +2,9 @@
 
 from unittest.mock import MagicMock
 
+from custom_components.noris_ai.diagnostics import async_get_config_entry_diagnostics
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
-
-from custom_components.noris_ai.diagnostics import (
-    async_get_config_entry_diagnostics,
-)
 
 from .conftest import setup_integration
 

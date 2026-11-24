@@ -35,20 +35,34 @@ from homeassistant.helpers.selector import (
 from . import _create_client, _validate_api_key
 from .const import (
     AI_TASK_SUBENTRY_TYPE,
+    CONF_ENABLE_REASONING,
     CONF_MAX_TOKENS,
     CONF_PROMPT,
     CONF_RECOMMENDED,
     CONF_TEMPERATURE,
     CONF_TOP_P,
-    CONF_ENABLE_REASONING,
     CONVERSATION_SUBENTRY_TYPE,
+    DEFAULT_AI_TASK_NAME,
+    DEFAULT_CONVERSATION_NAME,
+    DEFAULT_STT_NAME,
+    DEFAULT_TTS_NAME,
     DOMAIN,
     RECOMMENDED_AI_TASK_MAX_TOKENS,
     RECOMMENDED_CONVERSATION_MAX_TOKENS,
     RECOMMENDED_TEMPERATURE,
     RECOMMENDED_TOP_P,
+    STT_SUBENTRY_TYPE,
+    TTS_SUBENTRY_TYPE,
 )
-from .models import async_get_model_options, default_model
+from .models import (
+    async_get_model_options,
+    default_model,
+    default_stt_model,
+    default_tts_model,
+    is_chat_model,
+    is_stt_model,
+    is_tts_model,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,7 +73,7 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for noris AI."""
 
     VERSION = 1
-    MINOR_VERSION = 1
+    MINOR_VERSION = 2
 
     @classmethod
     @callback
@@ -70,6 +84,8 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
         return {
             CONVERSATION_SUBENTRY_TYPE: ConversationFlowHandler,
             AI_TASK_SUBENTRY_TYPE: AITaskFlowHandler,
+            STT_SUBENTRY_TYPE: SttFlowHandler,
+            TTS_SUBENTRY_TYPE: TtsFlowHandler,
         }
 
     async def _async_validate_key(self, api_key: str) -> dict[str, str]:
@@ -81,7 +97,7 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
             return {"base": "invalid_auth"}
         except OpenAIError:
             return {"base": "cannot_connect"}
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOGGER.exception("Unexpected exception")
             return {"base": "unknown"}
         return {}
@@ -93,9 +109,7 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             self._async_abort_entries_match(user_input)
-            if not (errors := await self._async_validate_key(
-                user_input[CONF_API_KEY]
-            )):
+            if not (errors := await self._async_validate_key(user_input[CONF_API_KEY])):
                 return self.async_create_entry(title="noris AI", data=user_input)
         return self.async_show_form(
             step_id="user", data_schema=STEP_API_KEY_DATA_SCHEMA, errors=errors
@@ -113,9 +127,7 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
         """Confirm reauthentication dialog."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            if not (errors := await self._async_validate_key(
-                user_input[CONF_API_KEY]
-            )):
+            if not (errors := await self._async_validate_key(user_input[CONF_API_KEY])):
                 return self.async_update_reload_and_abort(
                     self._get_reauth_entry(), data_updates=user_input
                 )
@@ -127,11 +139,24 @@ class NorisAIConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class NorisAISubentryFlowHandler(ConfigSubentryFlow):
-    """Shared logic for conversation and AI task subentry flows."""
+    """Shared logic for every subentry flow of this integration.
+
+    One subentry maps to one device and one platform entity. Conversation and
+    AI task entities are chat models with tunable sampling parameters; the
+    speech platforms take only a model, so they switch the advanced step off
+    instead of duplicating the flow.
+    """
 
     subentry_type: str
     default_name: str
-    recommended_max_tokens: int
+    recommended_max_tokens: int = RECOMMENDED_CONVERSATION_MAX_TOKENS
+
+    # Chat platforms expose the advanced step (token budget, temperature,
+    # top_p, reasoning). Speech platforms have nothing to tune there.
+    supports_advanced: bool = True
+
+    # Abort reason when the gateway offers no model for this platform.
+    no_models_abort_reason: str = "no_models"
 
     def __init__(self) -> None:
         """Initialize the subentry flow."""
@@ -141,6 +166,16 @@ class NorisAISubentryFlowHandler(ConfigSubentryFlow):
     @property
     def _is_new(self) -> bool:
         return self.source == "user"
+
+    async def _async_model_options(self) -> list[SelectOptionDict]:
+        """Return the models this platform can use."""
+        return await async_get_model_options(
+            self._get_entry().runtime_data, is_chat_model
+        )
+
+    def _default_model(self, options: list[SelectOptionDict]) -> str | None:
+        """Return the model preselected in the picker."""
+        return default_model(options)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -167,17 +202,20 @@ class NorisAISubentryFlowHandler(ConfigSubentryFlow):
             if not user_input.get(CONF_LLM_HASS_API):
                 user_input.pop(CONF_LLM_HASS_API, None)
             self._data = user_input
-            if user_input[CONF_RECOMMENDED]:
+            if not self.supports_advanced or user_input.get(CONF_RECOMMENDED):
                 return await self._async_finish()
             return await self.async_step_advanced()
 
         try:
-            model_options = await async_get_model_options(entry.runtime_data)
+            model_options = await self._async_model_options()
         except OpenAIError:
             return self.async_abort(reason="cannot_connect")
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOGGER.exception("Unexpected exception")
             return self.async_abort(reason="unknown")
+
+        if not model_options:
+            return self.async_abort(reason=self.no_models_abort_reason)
 
         existing: Mapping[str, Any] = (
             self._get_reconfigure_subentry().data if not self._is_new else {}
@@ -189,7 +227,7 @@ class NorisAISubentryFlowHandler(ConfigSubentryFlow):
         schema[
             vol.Required(
                 CONF_MODEL,
-                default=existing.get(CONF_MODEL) or default_model(model_options),
+                default=existing.get(CONF_MODEL) or self._default_model(model_options),
             )
         ] = SelectSelector(
             SelectSelectorConfig(
@@ -199,11 +237,12 @@ class NorisAISubentryFlowHandler(ConfigSubentryFlow):
             )
         )
         self._extend_init_schema(schema, existing)
-        schema[
-            vol.Required(
-                CONF_RECOMMENDED, default=existing.get(CONF_RECOMMENDED, True)
-            )
-        ] = BooleanSelector()
+        if self.supports_advanced:
+            schema[
+                vol.Required(
+                    CONF_RECOMMENDED, default=existing.get(CONF_RECOMMENDED, True)
+                )
+            ] = BooleanSelector()
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
 
     def _extend_init_schema(
@@ -228,9 +267,7 @@ class NorisAISubentryFlowHandler(ConfigSubentryFlow):
             {
                 vol.Required(
                     CONF_MAX_TOKENS,
-                    default=existing.get(
-                        CONF_MAX_TOKENS, self.recommended_max_tokens
-                    ),
+                    default=existing.get(CONF_MAX_TOKENS, self.recommended_max_tokens),
                 ): NumberSelector(
                     NumberSelectorConfig(
                         min=100, max=128000, step=1, mode=NumberSelectorMode.BOX
@@ -250,9 +287,7 @@ class NorisAISubentryFlowHandler(ConfigSubentryFlow):
                 ): BooleanSelector(),
             }
         )
-        return self.async_show_form(
-            step_id="advanced", data_schema=vol.Schema(schema)
-        )
+        return self.async_show_form(step_id="advanced", data_schema=vol.Schema(schema))
 
     def _extend_advanced_schema(
         self, schema: dict[Any, Any], existing: Mapping[str, Any]
@@ -276,7 +311,7 @@ class ConversationFlowHandler(NorisAISubentryFlowHandler):
     """Subentry flow for conversation agents."""
 
     subentry_type = CONVERSATION_SUBENTRY_TYPE
-    default_name = "noris AI Conversation"
+    default_name = DEFAULT_CONVERSATION_NAME
     recommended_max_tokens = RECOMMENDED_CONVERSATION_MAX_TOKENS
 
     def _extend_init_schema(
@@ -314,5 +349,53 @@ class AITaskFlowHandler(NorisAISubentryFlowHandler):
     """Subentry flow for AI task entities."""
 
     subentry_type = AI_TASK_SUBENTRY_TYPE
-    default_name = "noris AI Task"
+    default_name = DEFAULT_AI_TASK_NAME
     recommended_max_tokens = RECOMMENDED_AI_TASK_MAX_TOKENS
+
+
+class SttFlowHandler(NorisAISubentryFlowHandler):
+    """Subentry flow for speech-to-text engines.
+
+    Only the transcription model is configurable: the platform reports a fixed
+    audio format (16 kHz mono 16-bit PCM in a WAV container), and the language
+    comes from the pipeline, so there is nothing else to ask for.
+    """
+
+    subentry_type = STT_SUBENTRY_TYPE
+    default_name = DEFAULT_STT_NAME
+    supports_advanced = False
+    no_models_abort_reason = "no_audio_models"
+
+    async def _async_model_options(self) -> list[SelectOptionDict]:
+        """Return the models that can transcribe audio."""
+        return await async_get_model_options(
+            self._get_entry().runtime_data, is_stt_model
+        )
+
+    def _default_model(self, options: list[SelectOptionDict]) -> str | None:
+        """Preselect the transcription model the gateway actually serves."""
+        return default_stt_model(options)
+
+
+class TtsFlowHandler(NorisAISubentryFlowHandler):
+    """Subentry flow for speech synthesis engines.
+
+    Only the speech model is configurable: the gateway requires a ``voice``
+    field but ignores its value, and every speech model exposes exactly one
+    voice (see TTS_VOICE).
+    """
+
+    subentry_type = TTS_SUBENTRY_TYPE
+    default_name = DEFAULT_TTS_NAME
+    supports_advanced = False
+    no_models_abort_reason = "no_speech_models"
+
+    async def _async_model_options(self) -> list[SelectOptionDict]:
+        """Return the models that can synthesise speech."""
+        return await async_get_model_options(
+            self._get_entry().runtime_data, is_tts_model
+        )
+
+    def _default_model(self, options: list[SelectOptionDict]) -> str | None:
+        """Preselect the German voice."""
+        return default_tts_model(options)

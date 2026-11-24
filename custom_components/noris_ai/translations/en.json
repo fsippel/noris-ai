@@ -2,7 +2,9 @@
   "config": {
     "step": {
       "user": {
-        "data": { "api_key": "API key" },
+        "data": {
+          "api_key": "API key"
+        },
         "data_description": {
           "api_key": "Your ai.noris.de key (sk-bf-…). It is sent as a standard Bearer token."
         }
@@ -10,7 +12,9 @@
       "reauth_confirm": {
         "title": "Re-authenticate noris AI",
         "description": "The API key for ai.noris.de is no longer valid. Enter a new key to continue.",
-        "data": { "api_key": "API key" }
+        "data": {
+          "api_key": "API key"
+        }
       }
     },
     "error": {
@@ -97,6 +101,56 @@
       "abort": {
         "entry_not_loaded": "The integration is not loaded",
         "cannot_connect": "Failed to fetch the model list",
+        "unknown": "Unexpected error",
+        "reconfigure_successful": "Configuration was updated"
+      }
+    },
+    "stt": {
+      "initiate_flow": {
+        "user": "Add speech-to-text service",
+        "reconfigure": "Reconfigure speech-to-text service"
+      },
+      "entry_type": "Speech-to-text",
+      "step": {
+        "init": {
+          "data": {
+            "name": "Name",
+            "model": "Model"
+          },
+          "data_description": {
+            "model": "The vLLM model used to transcribe speech. Transcription is currently served from the qsu channel only."
+          }
+        }
+      },
+      "abort": {
+        "entry_not_loaded": "The integration is not loaded",
+        "cannot_connect": "Failed to fetch the model list",
+        "no_audio_models": "The gateway does not currently offer a model that can transcribe audio.",
+        "unknown": "Unexpected error",
+        "reconfigure_successful": "Configuration was updated"
+      }
+    },
+    "tts": {
+      "initiate_flow": {
+        "user": "Add text-to-speech service",
+        "reconfigure": "Reconfigure text-to-speech service"
+      },
+      "entry_type": "Text-to-speech",
+      "step": {
+        "init": {
+          "data": {
+            "name": "Name",
+            "model": "Model"
+          },
+          "data_description": {
+            "model": "The model used to synthesise speech. Voices differ by language: the Kokoro voice speaks German only."
+          }
+        }
+      },
+      "abort": {
+        "entry_not_loaded": "The integration is not loaded",
+        "cannot_connect": "Failed to fetch the model list",
+        "no_speech_models": "The gateway does not currently offer a model that can synthesise speech.",
         "unknown": "Unexpected error",
         "reconfigure_successful": "Configuration was updated"
       }

@@ -17,9 +17,7 @@ from .entity import NorisAIEntity
 
 PARALLEL_UPDATES = 0
 
-_CODE_FENCE_PATTERN = re.compile(
-    r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL
-)
+_CODE_FENCE_PATTERN = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
 
 
 def _strip_code_fences(text: str) -> str:

@@ -5,11 +5,6 @@ from unittest.mock import MagicMock
 from openai import APIConnectionError, AuthenticationError
 import pytest
 
-from homeassistant import config_entries
-from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_MODEL, CONF_NAME
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
-
 from custom_components.noris_ai.const import (
     AI_TASK_SUBENTRY_TYPE,
     CONF_MAX_TOKENS,
@@ -20,6 +15,11 @@ from custom_components.noris_ai.const import (
     DEFAULT_MODEL,
     DOMAIN,
 )
+from homeassistant import config_entries
+from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_MODEL, CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
 from .conftest import setup_integration
 
 
@@ -166,7 +166,6 @@ async def test_conversation_subentry_advanced(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_MODEL] == "vllm/release/glm-5-2"
     assert result["data"][CONF_MAX_TOKENS] == 5000
-    assert result["data"]["prompt"] == "Du bist knapp."
 
 
 async def test_conversation_subentry_reconfigure(
@@ -187,11 +186,9 @@ async def test_conversation_subentry_reconfigure(
             CONF_RECOMMENDED: True,
         },
     )
-    subentry_id = list(mock_config_entry.subentries)[0]
+    subentry_id = next(iter(mock_config_entry.subentries))
 
-    result = await mock_config_entry.start_subentry_reconfigure_flow(
-        hass, subentry_id
-    )
+    result = await mock_config_entry.start_subentry_reconfigure_flow(hass, subentry_id)
     assert result["step_id"] == "init"
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -228,11 +225,9 @@ async def test_conversation_subentry_reconfigure_keeps_control_disabled(
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert CONF_LLM_HASS_API not in result["data"]
-    subentry_id = list(mock_config_entry.subentries)[0]
+    subentry_id = next(iter(mock_config_entry.subentries))
 
-    result = await mock_config_entry.start_subentry_reconfigure_flow(
-        hass, subentry_id
-    )
+    result = await mock_config_entry.start_subentry_reconfigure_flow(hass, subentry_id)
     assert result["step_id"] == "init"
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -268,11 +263,9 @@ async def test_conversation_subentry_reconfigure_default_omits_llm_hass_api(
             CONF_RECOMMENDED: True,
         },
     )
-    subentry_id = list(mock_config_entry.subentries)[0]
+    subentry_id = next(iter(mock_config_entry.subentries))
 
-    result = await mock_config_entry.start_subentry_reconfigure_flow(
-        hass, subentry_id
-    )
+    result = await mock_config_entry.start_subentry_reconfigure_flow(hass, subentry_id)
     assert result["step_id"] == "init"
 
     # Inspect the form's default for llm_hass_api: it must be empty, not

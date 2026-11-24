@@ -2,7 +2,9 @@
   "config": {
     "step": {
       "user": {
-        "data": { "api_key": "API-Schlüssel" },
+        "data": {
+          "api_key": "API-Schlüssel"
+        },
         "data_description": {
           "api_key": "Dein ai.noris.de-Schlüssel (sk-bf-…). Er wird als Standard-Bearer-Token gesendet."
         }
@@ -10,7 +12,9 @@
       "reauth_confirm": {
         "title": "noris AI neu authentifizieren",
         "description": "Der API-Schlüssel für ai.noris.de ist nicht mehr gültig. Gib einen neuen Schlüssel ein, um fortzufahren.",
-        "data": { "api_key": "API-Schlüssel" }
+        "data": {
+          "api_key": "API-Schlüssel"
+        }
       }
     },
     "error": {
@@ -97,6 +101,56 @@
       "abort": {
         "entry_not_loaded": "Die Integration ist nicht geladen",
         "cannot_connect": "Modell-Liste konnte nicht geladen werden",
+        "unknown": "Unerwarteter Fehler",
+        "reconfigure_successful": "Konfiguration wurde aktualisiert"
+      }
+    },
+    "stt": {
+      "initiate_flow": {
+        "user": "Sprache-zu-Text-Dienst hinzufügen",
+        "reconfigure": "Sprache-zu-Text-Dienst neu konfigurieren"
+      },
+      "entry_type": "Sprache zu Text",
+      "step": {
+        "init": {
+          "data": {
+            "name": "Name",
+            "model": "Modell"
+          },
+          "data_description": {
+            "model": "Das vLLM-Modell, das Sprache transkribiert. Transkription wird derzeit nur im qsu-Kanal angeboten."
+          }
+        }
+      },
+      "abort": {
+        "entry_not_loaded": "Die Integration ist nicht geladen",
+        "cannot_connect": "Modell-Liste konnte nicht geladen werden",
+        "no_audio_models": "Das Gateway bietet derzeit kein Modell an, das Audio transkribieren kann.",
+        "unknown": "Unerwarteter Fehler",
+        "reconfigure_successful": "Konfiguration wurde aktualisiert"
+      }
+    },
+    "tts": {
+      "initiate_flow": {
+        "user": "Text-zu-Sprache-Dienst hinzufügen",
+        "reconfigure": "Text-zu-Sprache-Dienst neu konfigurieren"
+      },
+      "entry_type": "Text zu Sprache",
+      "step": {
+        "init": {
+          "data": {
+            "name": "Name",
+            "model": "Modell"
+          },
+          "data_description": {
+            "model": "Das Modell, das Sprache synthetisiert. Die Stimmen unterscheiden sich je Sprache: Die Kokoro-Stimme spricht nur Deutsch."
+          }
+        }
+      },
+      "abort": {
+        "entry_not_loaded": "Die Integration ist nicht geladen",
+        "cannot_connect": "Modell-Liste konnte nicht geladen werden",
+        "no_speech_models": "Das Gateway bietet derzeit kein Modell an, das Sprache synthetisieren kann.",
         "unknown": "Unerwarteter Fehler",
         "reconfigure_successful": "Konfiguration wurde aktualisiert"
       }

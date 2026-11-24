@@ -20,30 +20,27 @@ from openai.types.chat import (
     ChatCompletionToolMessageParam,
     ChatCompletionUserMessageParam,
 )
-from openai.types.chat.chat_completion_message_function_tool_call_param import (
-    Function,
-)
+from openai.types.chat.chat_completion_message_function_tool_call_param import Function
 from openai.types.shared_params import FunctionDefinition
+import probatio
 import voluptuous as vol
 from voluptuous_openapi import convert
-import probatio
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_MODEL
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import llm
+from homeassistant.helpers import device_registry as dr, llm
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.json import json_dumps
 
 from . import NorisAIConfigEntry
 from .const import (
+    CONF_ENABLE_REASONING,
     CONF_MAX_TOKENS,
     CONF_RECOMMENDED,
     CONF_TEMPERATURE,
     CONF_TOP_P,
-    CONF_ENABLE_REASONING,
     DOMAIN,
     LOGGER,
     RECOMMENDED_TEMPERATURE,
@@ -103,16 +100,46 @@ class _ThinkTagFilter:
         return buf, ""
 
 
+def _strip_markdown_fence(text: str) -> str:
+    """Remove Markdown code fences (```...```) wrapping a JSON payload.
+
+    Some models (notably GLM-5-2) wrap ``response_format: json_object`` output -
+    and therefore tool-call argument strings - in Markdown fences despite the
+    constraint, producing a payload that is not directly parseable by
+    ``json.loads``.
+    """
+    stripped = text.strip()
+    # Leading fence: ```json\n... or ```\n...
+    if stripped.startswith("```"):
+        # Drop the opening fence line (may include a language tag like "json").
+        nl = stripped.find("\n")
+        stripped = stripped[nl + 1 :] if nl != -1 else stripped[3:]
+        # Drop a trailing closing fence.
+        if stripped.rstrip().endswith("```"):
+            stripped = stripped.rstrip()[:-3]
+    return stripped.strip()
+
+
 def _decode_tool_arguments(arguments: str) -> Any:
-    """Decode tool call arguments."""
+    """Decode tool call arguments.
+
+    Tolerant of models that wrap the JSON in Markdown code fences (e.g.
+    GLM-5-2) or surround it with stray backticks. A best-effort second parse is
+    attempted after stripping; if that also fails the original error is raised
+    so the caller still sees a meaningful message.
+    """
     if not arguments.strip():
         return {}
     try:
         return json.loads(arguments)
     except json.JSONDecodeError as err:
-        raise HomeAssistantError(
-            f"Unexpected tool argument response: {err}"
-        ) from err
+        cleaned = _strip_markdown_fence(arguments)
+        if cleaned and cleaned != arguments.strip():
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError:
+                pass
+        raise HomeAssistantError(f"Unexpected tool argument response: {err}") from err
 
 
 async def _transform_stream(
@@ -379,14 +406,18 @@ def _extract_thinking(
     return _split_thinking(message.content)
 
 
-class NorisAIEntity(Entity):
-    """Base entity for noris AI."""
+class NorisAISubentryEntity(Entity):
+    """Device identity for an entity backed by a config subentry.
+
+    Every platform in this integration maps one subentry to one device, and that
+    device's identity is the same regardless of what the entity does. Only the
+    identity lives here; behaviour belongs to the subclasses.
+    """
 
     _attr_has_entity_name = True
-    _recommended_max_tokens: int
 
     def __init__(self, entry: NorisAIConfigEntry, subentry: ConfigSubentry) -> None:
-        """Initialize the entity."""
+        """Initialize the entity from its subentry."""
         self.entry = entry
         self.subentry = subentry
         self.model = subentry.data[CONF_MODEL]
@@ -404,6 +435,12 @@ class NorisAIEntity(Entity):
         if self.subentry.data.get(CONF_RECOMMENDED, False):
             return default
         return self.subentry.data.get(key, default)
+
+
+class NorisAIEntity(NorisAISubentryEntity):
+    """Base entity for the chat-driven noris AI platforms."""
+
+    _recommended_max_tokens: int
 
     async def _async_handle_chat_log(
         self,
@@ -487,8 +524,7 @@ class NorisAIEntity(Entity):
             # Gateway/model rejects json_schema output: retry once with the
             # schema embedded in a system message instead.
             LOGGER.warning(
-                "response_format rejected by %s, falling back to prompt-based "
-                "JSON: %s",
+                "response_format rejected by %s, falling back to prompt-based JSON: %s",
                 self.model,
                 err,
             )
@@ -516,11 +552,7 @@ class NorisAIEntity(Entity):
         message = choice.message
 
         cleaned, thinking = _extract_thinking(message)
-        if (
-            choice.finish_reason == "length"
-            and not cleaned
-            and not message.tool_calls
-        ):
+        if choice.finish_reason == "length" and not cleaned and not message.tool_calls:
             raise HomeAssistantError(
                 "Token limit reached before the model produced an answer; "
                 "increase max_tokens"
