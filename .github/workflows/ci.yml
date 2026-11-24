@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly run against the newest Home Assistant test harness, so breakage
+    # from HA updates surfaces even when the repository itself is quiet.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # The brands icon PR for noris_ai hasn't been accepted upstream;
+          # drop this ignore once it is.
+          ignore: "brands"
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      # requirements_test.txt leaves pytest-homeassistant-custom-component
+      # unpinned, so this always tests against the newest HA line (including
+      # betas) — intentional, see the weekly schedule above.
+      - run: pip install -r requirements_test.txt
+      - run: pytest tests -v
