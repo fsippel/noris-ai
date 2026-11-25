@@ -21,6 +21,8 @@ Beide Funktionen laufen über das **Bifrost-Gateway** (`https://ai.noris.de/v1`)
 
 ## Installation
 
+**Voraussetzung:** Home Assistant **2026.10.0** oder neuer.
+
 ### Über HACS (empfohlen)
 
 1. Öffne Home Assistant und gehe zu **Settings → Devices & Services → HACS** (oder rufe HACS auf).

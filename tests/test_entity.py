@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 import voluptuous as vol
 
 from custom_components.noris_ai.entity import (
+    _convert_content_to_chat_message,
     _decode_tool_arguments,
     _extract_thinking,
     _format_structured_output,
     _split_thinking,
     _strip_markdown_fence,
 )
+from homeassistant.components import conversation
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import llm
 
 
 @pytest.mark.parametrize(
@@ -153,3 +157,24 @@ def test_format_structured_output_defaults_name() -> None:
     result = _format_structured_output("", vol.Schema({}))
 
     assert result["json_schema"]["name"] == "data"
+
+
+def test_failed_tool_result_is_flagged_as_error() -> None:
+    """A failed tool call reaches the model with the error flag set."""
+    content = conversation.ToolResultContent(
+        agent_id="conversation.test_agent",
+        tool_call_id="call_1",
+        tool_name="test_tool",
+        result=llm.ToolResult(
+            data={"error": "HomeAssistantError", "error_text": "kaputt"}, error=True
+        ),
+    )
+
+    message = _convert_content_to_chat_message(content)
+
+    assert message["role"] == "tool"
+    assert message["tool_call_id"] == "call_1"
+    assert json.loads(message["content"]) == {
+        "data": {"error": "HomeAssistantError", "error_text": "kaputt"},
+        "error": True,
+    }
