@@ -1,6 +1,5 @@
 pytest-homeassistant-custom-component
 openai>=2.21.0
-voluptuous-openapi
 
 # Pulled in by the conversation/ai_task/stt/tts components (manifest dependencies)
 gazetteer-matcher
