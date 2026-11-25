@@ -367,13 +367,29 @@ def _raise_gateway_error(err: openai.OpenAIError, model: str) -> NoReturn:
     raise HomeAssistantError("Error talking to ai.noris.de") from err
 
 
-def _format_structured_output(name: str, structure: vol.Schema) -> dict[str, Any]:
+def _format_structured_output(name: str, structure: probatio.Schema) -> dict[str, Any]:
     """Build a json_schema response_format (fully wired up in the AI task)."""
+    # The fields of an AI task structure are Home Assistant selectors, so they
+    # need the selector serializer to become JSON schema. Without it the
+    # conversion fails and the model is never told which fields to return.
+    #
+    # The schema is sent as converted, with "strict" set. Optional fields stay
+    # out of "required": the gateway's vLLM models compile the schema into a
+    # grammar and let the model omit them, which is what the caller asked for.
+    # A keyword a model's grammar backend cannot compile is answered with 400
+    # (measured: "uniqueItems" from a multi-select field, on glm-5-3 among
+    # others), and so is a schema an upstream reads more strictly. Either way
+    # the request is retried with the schema in the prompt (see
+    # _non_streaming_deltas).
     return {
         "type": "json_schema",
         "json_schema": {
             "name": name or "data",
-            "schema": _safe_convert(structure, None),
+            "schema": probatio.to_openapi(
+                structure,
+                custom_serializer=llm.selector_serializer,
+                openapi_version="3.1.0",
+            ),
             "strict": True,
         },
     }
@@ -448,7 +464,7 @@ class NorisAIEntity(NorisAISubentryEntity):
         *,
         stream: bool = True,
         structure_name: str | None = None,
-        structure: vol.Schema | None = None,
+        structure: probatio.Schema | None = None,
     ) -> None:
         """Generate an answer for the chat log."""
         model_args: dict[str, Any] = {
