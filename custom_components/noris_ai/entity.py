@@ -23,8 +23,6 @@ from openai.types.chat import (
 from openai.types.chat.chat_completion_message_function_tool_call_param import Function
 from openai.types.shared_params import FunctionDefinition
 import probatio
-import voluptuous as vol
-from voluptuous_openapi import convert
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigSubentry
@@ -220,89 +218,18 @@ async def _transform_stream(
         )
 
 
-def _sanitize_schema(obj: Any) -> Any:
-    """Strip non-JSON-serialisable sentinel values from a converted schema.
-
-    HA 2026.9 replaced ``voluptuous_openapi`` with ``probatio`` internally.
-    Its ``custom_serializer`` (used by ``llm.APIInstance``) returns
-    ``probatio.UNSUPPORTED`` — a bare ``_Unsupported`` sentinel — for any
-    schema construct that is not a HA selector. When ``convert()`` receives
-    this sentinel from the custom_serializer it propagates it as-is, so the
-    entire ``parameters`` dict (or nested sub-values) can be a non-JSON-
-    serialisable object. This causes::
-
-        TypeError: Object of type _Unsupported is not JSON serialisable
-
-    when the OpenAI SDK encodes the chat-completions request body.
-
-    Walk the converted result recursively and keep only JSON-native types
-    (str, int, float, bool, None, dict, list). Any sentinel—whether it wraps
-    the whole schema or hides in a nested value—is silently dropped.
-    """
-    if isinstance(obj, dict):
-        return {
-            k: _sanitize_schema(v)
-            for k, v in obj.items()
-            if isinstance(v, (str, int, float, type(None), dict, list))
-        }
-    if isinstance(obj, list):
-        return [
-            _sanitize_schema(item)
-            for item in obj
-            if isinstance(item, (str, int, float, type(None), dict, list))
-        ]
-    if isinstance(obj, (str, int, float, type(None))):
-        return obj
-    # Non-JSON sentinel (UNSUPPORTED / _Unsupported) — replace with {}
-    return {}
-
-
-def _safe_convert(
-    schema: vol.Schema,
-    custom_serializer: Callable[[Any], Any] | None,
-) -> dict[str, Any]:
-    """Convert a voluptuous schema to a JSON-schema dict, tolerating crashes.
-
-    HA 2026.9 replaced voluptuous_openapi with probatio internally. The
-    custom_serializer from llm.APIInstance returns probatio.UNSUPPORTED
-    sentinels which can make voluptuous_openapi.convert() raise NameError
-    or TypeError before our _sanitize_schema ever sees the result. Catch
-    that and fall back to converting without the custom_serializer, then
-    sanitise whichever result we get.
-    """
-    try:
-        result = convert(schema, custom_serializer=custom_serializer)
-    except Exception:
-        LOGGER.warning(
-            "voluptuous_openapi.convert crashed with custom_serializer, "
-            "retrying without it",
-            exc_info=True,
-        )
-        try:
-            result = convert(schema)
-        except Exception:
-            LOGGER.warning(
-                "voluptuous_openapi.convert crashed without custom_serializer "
-                "too, using empty schema",
-                exc_info=True,
-            )
-            return {}
-    return _sanitize_schema(result)
-
-
 def _format_tool(
     tool: llm.Tool,
     custom_serializer: Callable[[Any], Any] | None,
 ) -> ChatCompletionFunctionToolParam:
     """Format tool specification."""
-    # HA 2026.9+ passes probatio schemas as tool parameters. Converting them
-    # through voluptuous_openapi (via _safe_convert) drops fields because the
-    # selector serializer emits UNSUPPORTED sentinels that _sanitize_schema
-    # silently removes - the model then receives tools without parameter
-    # definitions and has to guess argument names (observed with qwen3.8:
+    # HA 2026.9+ passes probatio schemas as tool parameters, and
+    # probatio.to_openapi is the supported conversion (same approach as HA
+    # core's Anthropic conversation agent). Converting them through
+    # voluptuous_openapi dropped every parameter definition, so the model had
+    # to guess argument names (observed with qwen3.8:
     # media_player__search_media called with 'query'/'media_query' instead
-    # of 'search_query'). probatio.to_openapi is the supported conversion
-    # (same approach as HA core's Anthropic conversation agent).
+    # of 'search_query').
     parameters = probatio.to_openapi(
         tool.parameters,
         custom_serializer=custom_serializer,
