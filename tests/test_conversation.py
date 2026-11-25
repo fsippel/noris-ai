@@ -1,9 +1,11 @@
 """Tests for the noris AI conversation entity."""
 
 from collections.abc import AsyncGenerator
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from openai import APIStatusError
+import pytest
 import voluptuous as vol
 
 from homeassistant.components import conversation
@@ -49,7 +51,10 @@ async def test_simple_answer(
 
 
 async def test_tool_call_round(
-    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_conversation
+    hass: HomeAssistant,
+    mock_openai: MagicMock,
+    mock_config_entry_with_conversation,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """First response calls a tool, second one answers."""
     from openai.types.chat.chat_completion_chunk import (
@@ -105,6 +110,13 @@ async def test_tool_call_round(
     assert result.response.speech["plain"]["speech"] == "Erledigt"
     mock_tool.async_call.assert_awaited_once()
     assert mock_openai.chat.completions.create.await_count == 2
+    # The follow-up request hands the tool result back as data plus error flag.
+    follow_up = mock_openai.chat.completions.create.call_args.kwargs["messages"]
+    tool_message = next(m for m in follow_up if m["role"] == "tool")
+    assert tool_message["tool_call_id"] == "call_1"
+    assert json.loads(tool_message["content"]) == {"data": {"ok": True}, "error": False}
+    # Home Assistant reports the deprecated accessor through its log.
+    assert "ToolResultContent.tool_result" not in caplog.text
 
 
 async def test_broken_model_reports_friendly_error(
