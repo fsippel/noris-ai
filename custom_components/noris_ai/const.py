@@ -19,8 +19,8 @@ BASE_URL = "https://ai.noris.de/v1"
 # official model overview lists it as deprecated (end of life 2027-04-30), so
 # it is no longer preferred. Existing subentries keep whatever model they use.
 PREFERRED_CHAT_MODELS: tuple[str, ...] = (
-    "vllm/release/qwen3.8-27b",
     "vllm/release/gemma-4-31b-it",
+    "vllm/release/qwen3.8-27b",
     "vllm/release/glm-5-3",
 )
 

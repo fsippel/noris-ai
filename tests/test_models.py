@@ -61,25 +61,25 @@ def _options(*values: str) -> list[SelectOptionDict]:
 def test_default_model_follows_the_preference_order() -> None:
     options = _options(
         "vllm/release/glm-5-3",
-        "vllm/release/gemma-4-31b-it",
+        "vllm/release/qwen3.8-27b",
         "vllm/release/gpt-oss-120b",
     )
-    assert default_model(options) == "vllm/release/gemma-4-31b-it"
+    assert default_model(options) == "vllm/release/qwen3.8-27b"
 
 
 def test_default_model_takes_the_first_preference_when_present() -> None:
     options = _options(*reversed(PREFERRED_CHAT_MODELS), "vllm/release/gpt-oss-120b")
-    assert default_model(options) == "vllm/release/qwen3.8-27b"
+    assert default_model(options) == "vllm/release/gemma-4-31b-it"
 
 
 def test_default_model_tolerates_a_rename_without_channel() -> None:
-    options = _options("vllm/gpt-oss-120b", "vllm/qwen3.8-27b")
-    assert default_model(options) == "vllm/qwen3.8-27b"
+    options = _options("vllm/gpt-oss-120b", "vllm/gemma-4-31b-it")
+    assert default_model(options) == "vllm/gemma-4-31b-it"
 
 
 def test_default_model_prefers_production_over_staging() -> None:
     """A staging-only first choice loses to a later choice in production."""
-    options = _options("vllm/qsu/qwen3.8-27b", "vllm/release/glm-5-3")
+    options = _options("vllm/qsu/gemma-4-31b-it", "vllm/release/glm-5-3")
     assert default_model(options) == "vllm/release/glm-5-3"
 
 
