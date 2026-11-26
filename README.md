@@ -15,9 +15,7 @@ Die **noris AI**-Integration für Home Assistant erweitert dein Smart Home um vi
 3. **Speech-to-text** — Transkription von Assist-Sprachbefehlen über die Audio-Modelle des Gateways (Voxtral).
 4. **Text-to-speech** — Sprachausgabe über die Speech-Modelle des Gateways (Kokoro, CosyVoice3, Qwen3-TTS VoiceDesign).
 
-Beide Funktionen laufen über das **Bifrost-Gateway** (`https://ai.noris.de/v1`) der noris network AG — eine OpenAI-kompatible API mit Zugriff auf lokale (`vllm/*`) und externe Modelle.
-
-**Datenschutz:** Alle Gateway-Modelle sind wählbar, aber nur die **`vllm/*`**-Modelle laufen **on-premises** im noris-Rechenzentrum Nürnberg 6 — deine Daten verlassen dabei das Rechenzentrum nicht. Anthropic-Modelle sind ebenfalls wählbar, werden aber extern geroutet.
+Alle vier Funktionen laufen über das **Bifrost-Gateway** (`https://ai.noris.de/v1`) der noris network AG — eine OpenAI-kompatible API.
 
 ## Installation
 
@@ -113,10 +111,9 @@ Der Picker wählt vor: die **Release-Variante** eines Modells, wenn es sie gibt,
 
 Der **Modell-Picker** zeigt alle für dein Konto verfügbaren Modelle auf `ai.noris.de/v1`.
 
-### Verfügbare Modelltypen
+### Reihenfolge
 
-- **`vllm/*`** — On-premises-Modelle im Rechenzentrum Nürnberg 6. Sie stehen in der Liste ganz oben und sind die richtige Wahl, wenn Datenschutz eine Rolle spielt (z. B. `vllm/gpt-oss-120b`).
-- **Anthropic-Modelle** — ebenfalls wählbar, werden aber über externe APIs geroutet.
+Modelle mit dem Präfix **`vllm/`** stehen in der Liste ganz oben, danach folgen die übrigen nach Namen sortiert.
 
 ### Automatisch gefiltert
 
