@@ -443,6 +443,16 @@ class NorisAIEntity(NorisAISubentryEntity):
             "user": chat_log.conversation_id,
         }
         if not self._get_option(CONF_ENABLE_REASONING, False):
+            # No single switch works for every model family, so both are sent
+            # and no family is detected. Measured 2026-11-25, answer tokens for
+            # a one-word answer (no switch / enable_thinking only /
+            # reasoning_effort only / both):
+            #   gpt-oss-120b  64-148 / 84-94 / 20-23 / 26
+            #   qwen3.8-27b   47-63  / 3-4   / 44-69 / 7
+            #   glm-5-3       62-105 / 82-84 / 4-10  / 8
+            # Each family ignores the switch it does not know. gpt-oss keeps a
+            # small rest of reasoning; it cannot be switched off entirely.
+            model_args["reasoning_effort"] = "low"
             # OpenAI SDK >= 3.x rejects unknown kwargs; pass via extra_body
             # which the gateway forwards to the vLLM chat template.
             model_args["extra_body"] = {
