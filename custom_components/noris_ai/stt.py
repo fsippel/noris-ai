@@ -23,7 +23,7 @@ from .const import (
     STT_TIMEOUT,
 )
 from .entity import NorisAISubentryEntity
-from .helpers import pcm_to_wav
+from .helpers import model_not_allowed_message, pcm_to_wav
 
 PARALLEL_UPDATES = 0
 
@@ -196,16 +196,20 @@ class NorisAISttEntity(stt.SpeechToTextEntity, NorisAISubentryEntity):
                         self.model,
                     )
                 break
-            # AuthenticationError and PermissionDeniedError subclass
-            # APIStatusError, which subclasses OpenAIError, so this ordering
-            # (auth -> APIStatusError -> APITimeoutError -> OpenAIError) is
-            # load-bearing: reordering it silently breaks the reauth path.
-            except (openai.AuthenticationError, openai.PermissionDeniedError) as err:
+            # AuthenticationError subclasses APIStatusError, which subclasses
+            # OpenAIError, so this ordering (auth -> APIStatusError ->
+            # APITimeoutError -> OpenAIError) is load-bearing: reordering it
+            # silently breaks the reauth path. Only 401 is a key problem. A 403
+            # (PermissionDeniedError) concerns the model and is handled as a
+            # status error below, so the fallback model still gets its turn.
+            except openai.AuthenticationError as err:
                 LOGGER.error("Authentication failed during transcription: %s", err)
                 self.entry.async_start_reauth(self.hass)
                 return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
             except openai.APIStatusError as err:
-                if err.status_code == 404:
+                if err.status_code == 403:
+                    LOGGER.error("%s: %s", model_not_allowed_message(model), err)
+                elif err.status_code == 404:
                     LOGGER.error(
                         "Model %s does not support transcription. Reconfigure the "
                         "speech-to-text entity to use an audio model",

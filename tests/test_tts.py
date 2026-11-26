@@ -11,6 +11,7 @@ from openai import (
     APIStatusError,
     APITimeoutError,
     AuthenticationError,
+    PermissionDeniedError,
 )
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -381,3 +382,30 @@ async def test_cosyvoice_keeps_its_natural_tempo(
     await _entity(hass, mock_config_entry).async_get_tts_audio("Hallo.", "de", {})
 
     speed.assert_not_awaited()
+
+
+def _forbidden(url: str) -> PermissionDeniedError:
+    """Build the 403 the gateway sends for a model the key may not use."""
+    request = httpx.Request("POST", url)
+    return PermissionDeniedError(
+        "Model vllm/x is not allowed for virtual key",
+        response=httpx.Response(403, request=request),
+        body=None,
+    )
+
+
+async def test_forbidden_model_does_not_start_reauth(
+    hass: HomeAssistant, mock_client: AsyncMock, mock_config_entry: MockConfigEntry
+) -> None:
+    """403 means the model is not available to the key; the key is fine."""
+    mock_client.audio.speech.create = AsyncMock(
+        side_effect=_forbidden("https://ai.noris.de/v1/audio/speech")
+    )
+    await setup_integration(hass, mock_config_entry)
+
+    with pytest.raises(HomeAssistantError, match="is not available for this API key"):
+        await _entity(hass, mock_config_entry).async_get_tts_audio("Hallo.", "de", {})
+    await hass.async_block_till_done()
+
+    flows = hass.config_entries.flow.async_progress()
+    assert not any(flow["context"]["source"] == "reauth" for flow in flows)

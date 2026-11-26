@@ -44,6 +44,7 @@ from .const import (
     RECOMMENDED_TEMPERATURE,
     RECOMMENDED_TOP_P,
 )
+from .helpers import model_not_allowed_message
 
 MAX_TOOL_ITERATIONS = 10
 
@@ -288,6 +289,9 @@ def _convert_content_to_chat_message(
 
 def _raise_gateway_error(err: openai.OpenAIError, model: str) -> NoReturn:
     """Map gateway errors to user-friendly HomeAssistantErrors."""
+    if isinstance(err, openai.PermissionDeniedError):
+        LOGGER.error("Model %s was refused with 403: %s", model, err)
+        raise HomeAssistantError(model_not_allowed_message(model)) from err
     if "no keys found" in str(err):
         raise HomeAssistantError(
             f"The model {model} is currently not available on ai.noris.de"

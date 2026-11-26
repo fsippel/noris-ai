@@ -44,3 +44,14 @@ def tts_languages_for_model(model_id: str) -> list[str]:
         if pattern.search(model_id):
             return list(languages)
     return list(TTS_DEFAULT_LANGUAGES)
+
+
+def model_not_allowed_message(model: str) -> str:
+    """Message for a 403: the key is fine, the model is not available to it.
+
+    Measured 2026-11-25: an invalid key is answered with 401, while an unknown,
+    renamed or not-enabled model is answered with 403 ("Model ... is not
+    allowed for virtual key ..."). Entering the same key again cannot fix a
+    403, so it must never lead into the reauth dialog.
+    """
+    return f"The model {model} is not available for this API key on ai.noris.de"
