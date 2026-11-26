@@ -287,6 +287,44 @@ def _convert_content_to_chat_message(
     return None
 
 
+_REASONING_SWITCHES = ("reasoning_effort", "extra_body")
+
+
+async def _create_completion(
+    client: Any, model_args: dict[str, Any], **kwargs: Any
+) -> Any:
+    """Request a completion; give up the reasoning switches if they are refused.
+
+    Every chat model measured so far accepts both switches, but a model added
+    to the gateway later may answer them with 400. Without this the assistant
+    would fail on every turn, with no hint that enabling reasoning helps. On
+    a 400 the switches are removed from ``model_args`` for the rest of the
+    turn and the request is sent once more. If that fails as well, the
+    switches were not the cause: they are put back and the error is raised.
+    """
+    try:
+        return await client.chat.completions.create(**model_args, **kwargs)
+    except openai.BadRequestError as err:
+        removed = {
+            key: model_args.pop(key) for key in _REASONING_SWITCHES if key in model_args
+        }
+        if not removed:
+            raise
+        try:
+            result = await client.chat.completions.create(**model_args, **kwargs)
+        except openai.OpenAIError:
+            model_args.update(removed)
+            raise err from None
+        LOGGER.warning(
+            "%s refused the request with the reasoning switches and answered "
+            "without the reasoning switches; the model may reason although "
+            "reasoning is disabled: %s",
+            model_args.get("model"),
+            err,
+        )
+        return result
+
+
 def _raise_gateway_error(err: openai.OpenAIError, model: str) -> NoReturn:
     """Map gateway errors to user-friendly HomeAssistantErrors."""
     if isinstance(err, openai.PermissionDeniedError):
@@ -485,8 +523,8 @@ class NorisAIEntity(NorisAISubentryEntity):
         for _iteration in range(MAX_TOOL_ITERATIONS):
             if stream:
                 try:
-                    result_stream = await client.chat.completions.create(
-                        stream=True, **model_args
+                    result_stream = await _create_completion(
+                        client, model_args, stream=True
                     )
                 except openai.OpenAIError as err:
                     _raise_gateway_error(err, self.model)
@@ -511,7 +549,12 @@ class NorisAIEntity(NorisAISubentryEntity):
     ) -> AsyncGenerator[conversation.AssistantContentDeltaDict]:
         """Non-streaming completion as a delta generator (AI task path)."""
         try:
-            result = await client.chat.completions.create(**model_args)
+            if "response_format" in model_args:
+                # Sent as is: a 400 here is most likely about the schema, and
+                # the schema fallback below is the cheaper thing to try first.
+                result = await client.chat.completions.create(**model_args)
+            else:
+                result = await _create_completion(client, model_args)
         except openai.BadRequestError as err:
             if "response_format" not in model_args:
                 _raise_gateway_error(err, self.model)
@@ -535,7 +578,7 @@ class NorisAIEntity(NorisAISubentryEntity):
                 },
             ]
             try:
-                result = await client.chat.completions.create(**retry_args)
+                result = await _create_completion(client, retry_args)
             except openai.OpenAIError as retry_err:
                 _raise_gateway_error(retry_err, self.model)
         except openai.OpenAIError as err:

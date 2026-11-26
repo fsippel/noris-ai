@@ -31,7 +31,7 @@ from homeassistant.setup import async_setup_component
 CHAT_MODEL = "vllm/release/gpt-oss-120b"
 # Model of the pre-existing chat subentries in these tests: the former fixed
 # default, which upgraded installations still carry.
-CHAT_MODEL = "vllm/gpt-oss-120b"
+LEGACY_CHAT_MODEL = "vllm/gpt-oss-120b"
 AUDIO_MODEL = "vllm/qsu/voxtral-small-24b-2507"
 SPEECH_MODEL = "Cosyvoice3/release/cosyvoice3-0.5b-rl"
 
@@ -237,7 +237,7 @@ def mock_config_entry_with_conversation(hass: HomeAssistant) -> MockConfigEntry:
         subentries_data=[
             ConfigSubentryData(
                 data={
-                    CONF_MODEL: CHAT_MODEL,
+                    CONF_MODEL: LEGACY_CHAT_MODEL,
                     CONF_RECOMMENDED: True,
                     "llm_hass_api": ["assist"],
                 },
@@ -260,7 +260,7 @@ def mock_config_entry_with_ai_task(hass: HomeAssistant) -> MockConfigEntry:
         data={CONF_API_KEY: "sk-bf-test"},
         subentries_data=[
             ConfigSubentryData(
-                data={CONF_MODEL: CHAT_MODEL, CONF_RECOMMENDED: True},
+                data={CONF_MODEL: LEGACY_CHAT_MODEL, CONF_RECOMMENDED: True},
                 subentry_type=AI_TASK_SUBENTRY_TYPE,
                 title="Test Task",
                 unique_id=None,
