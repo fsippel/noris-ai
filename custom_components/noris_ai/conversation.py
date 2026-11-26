@@ -41,9 +41,12 @@ class NorisAIConversationEntity(NorisAIEntity, conversation.ConversationEntity):
     _attr_name = None
     _recommended_max_tokens = RECOMMENDED_CONVERSATION_MAX_TOKENS
     # The answer already reaches the chat log as a delta stream (see
-    # chat_log.async_add_delta_content_stream in entity.py). The flag only
-    # announces it: without it the Assist pipeline waits for the complete
-    # answer before it hands any text to a streaming text-to-speech engine.
+    # chat_log.async_add_delta_content_stream in entity.py), so the flag only
+    # states a fact. In Home Assistant 2026.10 it does NOT decide whether text
+    # is streamed to the speech engine: that depends on the engine alone
+    # (assist_pipeline/default_pipeline.py, supports_streaming_input). The
+    # flag feeds "stream_response" in the pipeline's run-start event, which
+    # tells clients such as voice satellites that audio may arrive early.
     _attr_supports_streaming = True
 
     def __init__(self, entry: NorisAIConfigEntry, subentry: ConfigSubentry) -> None:
