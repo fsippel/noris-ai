@@ -125,7 +125,7 @@ def model_label(model: Model) -> str:
 
 
 def sort_key(model: Model) -> tuple[int, str]:
-    """Sort on-prem vllm models first, then by label."""
+    """Sort vllm models first, then by label."""
     group = 0 if model.id.startswith("vllm/") else 1
     return (group, model_label(model).lower())
 
@@ -166,7 +166,7 @@ def default_model(options: list[SelectOptionDict]) -> str | None:
     The gateway occasionally renames models with channel prefixes
     (e.g. ``vllm/gpt-oss-120b`` -> ``vllm/release/gpt-oss-120b``), so the
     preferred model is matched by exact id first, then by suffix, before
-    falling back to the first on-prem model in the list.
+    falling back to the first vllm model in the list.
     """
     if resolved := _preferred_id(DEFAULT_MODEL, options):
         return resolved
