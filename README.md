@@ -2,7 +2,7 @@
 
 **English Summary**
 
-A custom Home Assistant integration for the **ai.noris.de** Bifrost gateway. Adds a **Conversation agent** (for Assist / voice control), an **AI Task** entity (structured data generation for automations), a **Speech-to-text** entity (transcribe Assist commands) and a **Text-to-speech** entity (speak through the gateway's speech models). Built on the OpenAI-compatible Chat Completions, transcription and speech APIs with standard Bearer authentication. All gateway models are selectable (`vllm/*` listed first). Reranker and draft models are filtered out, and audio/speech models are no longer offered as chat models. Default model: `vllm/gpt-oss-120b`.
+A custom Home Assistant integration for the **ai.noris.de** Bifrost gateway. Adds a **Conversation agent** (for Assist / voice control), an **AI Task** entity (structured data generation for automations), a **Speech-to-text** entity (transcribe Assist commands) and a **Text-to-speech** entity (speak through the gateway's speech models). Built on the OpenAI-compatible Chat Completions, transcription and speech APIs with standard Bearer authentication. All gateway models are selectable (`vllm/*` listed first). Reranker and draft models are filtered out, and audio/speech models are no longer offered as chat models. Default model: the first one available of Qwen 3.8 27B, Gemma 4 31B and GLM 5.3.
 
 ---
 
@@ -55,7 +55,7 @@ Nach erfolgreicher Authentifizierung siehe die noris AI-Integration in der Gerä
 #### Conversation Agent hinzufügen
 
 1. Klick auf **Add conversation agent**.
-2. Wähle ein Modell aus der Liste (Standard: `vllm/gpt-oss-120b`).
+2. Wähle ein Modell aus der Liste (ein Standard ist vorausgewählt, siehe [Modelle](#modelle)).
 3. Optional:
    - **Control Home Assistant:** aktiviere dies, um Geräte per Tool-Call zu steuern (setzt ein Modell mit Function-Calling-Unterstützung voraus).
    - **Empfohlene Einstellungen:** vorgestellt, für die meisten Nutzer ausreichend.
@@ -65,7 +65,7 @@ Nach erfolgreicher Authentifizierung siehe die noris AI-Integration in der Gerä
 
 1. Klick auf **Add AI task**.
 2. Gib einen **Namen** an (z. B. `data_extractor`).
-3. Wähle ein Modell (Standard: `vllm/gpt-oss-120b`).
+3. Wähle ein Modell (ein Standard ist vorausgewählt, siehe [Modelle](#modelle)).
 4. Optional erweiterte Einstellungen.
 
 Ein JSON-Schema für strukturierte Ausgaben wird nicht in diesem Flow konfiguriert, sondern **zur Laufzeit** beim Aufruf des Service `ai_task.generate_data` über den Parameter `structure` übergeben.
@@ -123,7 +123,9 @@ Modelle mit dem Präfix **`vllm/`** stehen in der Liste ganz oben, danach folgen
 
 ### Standard
 
-Das Standardmodell ist **`vllm/gpt-oss-120b`** (ein großes, generalistisches Instruct-Modell mit guter Function-Calling-Unterstützung).
+Beim Anlegen ist das erste verfügbare Modell aus dieser Reihenfolge vorausgewählt: **Qwen 3.8 27B**, **Gemma 4 31B**, **GLM 5.3**. Ist keines davon für dein Konto verfügbar, wird das erste `vllm/`-Modell der Liste vorausgewählt.
+
+Bestehende Einrichtungen behalten ihr Modell; die Vorauswahl gilt nur für neu angelegte Einträge. `gpt-oss-120b` war früher der Standard und ist inzwischen abgekündigt (End-of-Life 30.04.2027). Wer es noch nutzt, wechselt über „Neu konfigurieren“ auf ein anderes Modell.
 
 ## Hinweise
 

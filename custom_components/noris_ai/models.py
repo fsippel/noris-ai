@@ -11,7 +11,7 @@ from homeassistant.helpers.selector import SelectOptionDict
 
 from .const import (
     AUDIO_MODEL_PATTERN,
-    DEFAULT_MODEL,
+    PREFERRED_CHAT_MODELS,
     PREFERRED_STT_MODEL,
     PREFERRED_TTS_MODEL,
     RELEASE_CHANNEL,
@@ -163,13 +163,23 @@ def _channel_rank(model_id: str) -> int:
 def default_model(options: list[SelectOptionDict]) -> str | None:
     """Pick the best default from the live chat model list.
 
-    The gateway occasionally renames models with channel prefixes
-    (e.g. ``vllm/gpt-oss-120b`` -> ``vllm/release/gpt-oss-120b``), so the
-    preferred model is matched by exact id first, then by suffix, before
-    falling back to the first vllm model in the list.
+    Walks PREFERRED_CHAT_MODELS twice. The first pass skips matches that only
+    exist in the staging channel, so a later preference running in production
+    beats an earlier one that is merely staged: the staging lane flaps. The
+    second pass takes a staged match after all. Each lookup tolerates the
+    gateway's channel renames (see _preferred_id). Without any match the first
+    vllm model in the list is used.
     """
-    if resolved := _preferred_id(DEFAULT_MODEL, options):
-        return resolved
+    staged: str | None = None
+    for preferred in PREFERRED_CHAT_MODELS:
+        resolved = _preferred_id(preferred, options)
+        if resolved is None:
+            continue
+        if _channel_from_id(resolved) != STAGING_CHANNEL:
+            return resolved
+        staged = staged or resolved
+    if staged:
+        return staged
     values = [option["value"] for option in options]
     return next(
         (value for value in values if value.startswith("vllm/")),
