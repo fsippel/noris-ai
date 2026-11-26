@@ -296,6 +296,39 @@ def _raise_gateway_error(err: openai.OpenAIError, model: str) -> NoReturn:
     raise HomeAssistantError("Error talking to ai.noris.de") from err
 
 
+# Schema keywords that some gateway models reject with 400. "uniqueItems" comes
+# from multi-select fields; glm-5-3 and deepseek-v41-flash cannot compile it
+# into a grammar. Dropping it only loosens the schema (duplicates would be
+# allowed), and it saves the retry that the rejection used to cost.
+_UNSUPPORTED_SCHEMA_KEYWORDS = frozenset({"uniqueItems"})
+
+
+def _drop_unsupported_keywords(schema: Any) -> Any:
+    """Return the JSON schema without keywords the gateway models reject.
+
+    Walks the places where a schema nests further schemas. The keys of
+    "properties" are field names, not keywords, so a field that happens to be
+    called like a keyword is kept.
+    """
+    if isinstance(schema, list):
+        return [_drop_unsupported_keywords(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    result: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in _UNSUPPORTED_SCHEMA_KEYWORDS:
+            continue
+        if key in ("properties", "$defs", "definitions") and isinstance(value, dict):
+            result[key] = {
+                name: _drop_unsupported_keywords(sub) for name, sub in value.items()
+            }
+        elif key in ("items", "additionalProperties", "anyOf", "oneOf", "allOf"):
+            result[key] = _drop_unsupported_keywords(value)
+        else:
+            result[key] = value
+    return result
+
+
 def _format_structured_output(name: str, structure: probatio.Schema) -> dict[str, Any]:
     """Build a json_schema response_format (fully wired up in the AI task)."""
     # The fields of an AI task structure are Home Assistant selectors, so they
@@ -305,19 +338,21 @@ def _format_structured_output(name: str, structure: probatio.Schema) -> dict[str
     # The schema is sent as converted, with "strict" set. Optional fields stay
     # out of "required": the gateway's vLLM models compile the schema into a
     # grammar and let the model omit them, which is what the caller asked for.
-    # A keyword a model's grammar backend cannot compile is answered with 400
-    # (measured: "uniqueItems" from a multi-select field, on glm-5-3 among
-    # others), and so is a schema an upstream reads more strictly. Either way
-    # the request is retried with the schema in the prompt (see
-    # _non_streaming_deltas).
+    # A keyword a model's grammar backend cannot compile is answered with 400,
+    # and so is a schema an upstream reads more strictly. Either way the
+    # request is retried with the schema in the prompt (see
+    # _non_streaming_deltas). The one keyword known to trigger this is removed
+    # up front, see _drop_unsupported_keywords.
     return {
         "type": "json_schema",
         "json_schema": {
             "name": name or "data",
-            "schema": probatio.to_openapi(
-                structure,
-                custom_serializer=llm.selector_serializer,
-                openapi_version="3.1.0",
+            "schema": _drop_unsupported_keywords(
+                probatio.to_openapi(
+                    structure,
+                    custom_serializer=llm.selector_serializer,
+                    openapi_version="3.1.0",
+                )
             ),
             "strict": True,
         },
