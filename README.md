@@ -2,7 +2,7 @@
 
 **English Summary**
 
-A custom Home Assistant integration for the **ai.noris.de** Bifrost gateway. Adds a **Conversation agent** (for Assist / voice control), an **AI Task** entity (structured data generation for automations), a **Speech-to-text** entity (transcribe Assist commands) and a **Text-to-speech** entity (speak through the gateway's speech models). Built on the OpenAI-compatible Chat Completions, transcription and speech APIs with standard Bearer authentication. All gateway models are selectable (`vllm/*` listed first). Reranker and draft models are filtered out, and audio/speech models are no longer offered as chat models. Default model: the first one available of Qwen 3.8 27B, Gemma 4 31B and GLM 5.3.
+A custom Home Assistant integration for the **ai.noris.de** Bifrost gateway. Adds a **Conversation agent** (for Assist / voice control), an **AI Task** entity (structured data generation for automations), a **Speech-to-text** entity (transcribe Assist commands) and a **Text-to-speech** entity (speak through the gateway's speech models). Built on the OpenAI-compatible Chat Completions, transcription and speech APIs with standard Bearer authentication. All gateway models are selectable (`vllm/*` listed first). Reranker and draft models are filtered out, and audio/speech models are no longer offered as chat models. Default model: the first one available of Gemma 4 31B, Qwen 3.8 27B and GLM 5.3.
 
 ---
 
@@ -123,7 +123,7 @@ Modelle mit dem Präfix **`vllm/`** stehen in der Liste ganz oben, danach folgen
 
 ### Standard
 
-Beim Anlegen ist das erste verfügbare Modell aus dieser Reihenfolge vorausgewählt: **Qwen 3.8 27B**, **Gemma 4 31B**, **GLM 5.3**. Ist keines davon für dein Konto verfügbar, wird das erste `vllm/`-Modell der Liste vorausgewählt.
+Beim Anlegen ist das erste verfügbare Modell aus dieser Reihenfolge vorausgewählt: **Gemma 4 31B**, **Qwen 3.8 27B**, **GLM 5.3**. Ist keines davon für dein Konto verfügbar, wird das erste `vllm/`-Modell der Liste vorausgewählt.
 
 Bestehende Einrichtungen behalten ihr Modell; die Vorauswahl gilt nur für neu angelegte Einträge. `gpt-oss-120b` war früher der Standard und ist inzwischen abgekündigt (End-of-Life 30.04.2027). Wer es noch nutzt, wechselt über „Neu konfigurieren“ auf ein anderes Modell.
 
