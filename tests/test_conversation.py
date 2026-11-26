@@ -4,7 +4,8 @@ from collections.abc import AsyncGenerator
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from openai import APIStatusError
+import httpx
+from openai import APIStatusError, PermissionDeniedError
 import pytest
 import voluptuous as vol
 
@@ -190,3 +191,28 @@ async def test_reasoning_on_sends_neither_switch(
     kwargs = mock_openai.chat.completions.create.call_args.kwargs
     assert "reasoning_effort" not in kwargs
     assert "extra_body" not in kwargs
+
+
+async def test_forbidden_model_reports_the_model_not_the_key(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_conversation
+) -> None:
+    """403 is the gateway's answer for a model the key may not use."""
+    await setup_integration(hass, mock_config_entry_with_conversation)
+    request = httpx.Request("POST", "https://ai.noris.de/v1/chat/completions")
+    mock_openai.chat.completions.create = AsyncMock(
+        side_effect=PermissionDeniedError(
+            "Model vllm/gpt-oss-120b is not allowed for virtual key",
+            response=httpx.Response(403, request=request),
+            body=None,
+        )
+    )
+
+    result = await conversation.async_converse(
+        hass, "Hallo", None, Context(), agent_id=AGENT_ID
+    )
+
+    assert result.response.response_type == intent.IntentResponseType.ERROR
+    assert (
+        "vllm/gpt-oss-120b is not available for this API key"
+        in result.response.speech["plain"]["speech"]
+    )

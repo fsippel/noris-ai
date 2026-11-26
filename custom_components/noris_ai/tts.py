@@ -32,7 +32,7 @@ from .const import (
     TTS_VOICEDESIGN_VOICE,
 )
 from .entity import NorisAISubentryEntity
-from .helpers import tts_languages_for_model
+from .helpers import model_not_allowed_message, tts_languages_for_model
 
 PARALLEL_UPDATES = 0
 
@@ -230,13 +230,17 @@ class NorisAITtsEntity(tts.TextToSpeechEntity, NorisAISubentryEntity):
                 timeout=TTS_TIMEOUT
             ).audio.speech.create(**kwargs)
         # AuthenticationError and PermissionDeniedError subclass APIStatusError,
-        # which subclasses OpenAIError, so this ordering (auth -> APIStatusError
-        # -> APITimeoutError -> OpenAIError) is load-bearing: reordering it
-        # silently breaks the reauth path.
-        except (openai.AuthenticationError, openai.PermissionDeniedError) as err:
+        # which subclasses OpenAIError, so this ordering (auth -> 403 ->
+        # APIStatusError -> APITimeoutError -> OpenAIError) is load-bearing:
+        # reordering it silently breaks the reauth path. Only 401 is a key
+        # problem; a 403 concerns the model.
+        except openai.AuthenticationError as err:
             LOGGER.error("Authentication failed during synthesis: %s", err)
             self.entry.async_start_reauth(self.hass)
             raise HomeAssistantError("Authentication failed") from err
+        except openai.PermissionDeniedError as err:
+            LOGGER.error("Model %s was refused with 403: %s", self.model, err)
+            raise HomeAssistantError(model_not_allowed_message(self.model)) from err
         except openai.APIStatusError as err:
             if err.status_code == 404:
                 LOGGER.error(

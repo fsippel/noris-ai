@@ -14,6 +14,7 @@ from openai import (
     APIStatusError,
     APITimeoutError,
     AuthenticationError,
+    PermissionDeniedError,
 )
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -513,3 +514,74 @@ async def test_timeout_on_primary_opens_the_breaker(
     assert first.result is stt.SpeechResultState.ERROR
     assert second.result is stt.SpeechResultState.SUCCESS
     assert seen.count(NEMOTRON_MODEL) == 1
+
+
+def _forbidden(url: str) -> PermissionDeniedError:
+    """Build the 403 the gateway sends for a model the key may not use."""
+    request = httpx.Request("POST", url)
+    return PermissionDeniedError(
+        "Model vllm/x is not allowed for virtual key",
+        response=httpx.Response(403, request=request),
+        body=None,
+    )
+
+
+async def test_forbidden_model_does_not_start_reauth(
+    hass: HomeAssistant,
+    mock_client: AsyncMock,
+    mock_config_entry: MockConfigEntry,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """403 means the model is not available to the key; the key is fine."""
+    mock_client.audio.transcriptions.create = AsyncMock(
+        side_effect=_forbidden("https://ai.noris.de/v1/audio/transcriptions")
+    )
+    await setup_integration(hass, mock_config_entry)
+
+    result = await _entity(hass, mock_config_entry).async_process_audio_stream(
+        _metadata(), _stream(PCM)
+    )
+    await hass.async_block_till_done()
+
+    assert result.result is stt.SpeechResultState.ERROR
+    assert "is not available for this API key" in caplog.text
+    flows = hass.config_entries.flow.async_progress()
+    assert not any(flow["context"]["source"] == "reauth" for flow in flows)
+
+
+async def test_forbidden_primary_model_uses_the_fallback(
+    hass: HomeAssistant, mock_client: AsyncMock
+) -> None:
+    """A model the key lost access to must not cost the voice turn."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="noris AI",
+        data={CONF_API_KEY: "sk-bf-test"},
+        subentries_data=[
+            ConfigSubentryData(
+                data={CONF_MODEL: NEMOTRON_MODEL},
+                subentry_type=STT_SUBENTRY_TYPE,
+                title=DEFAULT_STT_NAME,
+                unique_id=None,
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+
+    async def create(**kwargs):
+        if kwargs["model"] == NEMOTRON_MODEL:
+            raise _forbidden("https://ai.noris.de/v1/audio/transcriptions")
+        return SimpleNamespace(text="Licht an")
+
+    mock_client.audio.transcriptions.create = AsyncMock(side_effect=create)
+    await setup_integration(hass, entry)
+
+    result = await _entity(hass, entry).async_process_audio_stream(
+        _metadata(), _stream(PCM)
+    )
+    await hass.async_block_till_done()
+
+    assert result.result is stt.SpeechResultState.SUCCESS
+    assert result.text == "Licht an"
+    flows = hass.config_entries.flow.async_progress()
+    assert not any(flow["context"]["source"] == "reauth" for flow in flows)
