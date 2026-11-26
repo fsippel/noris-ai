@@ -5,7 +5,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
-from openai import APIStatusError, PermissionDeniedError
+from openai import APIStatusError, BadRequestError, PermissionDeniedError
 import pytest
 import voluptuous as vol
 
@@ -216,3 +216,43 @@ async def test_forbidden_model_reports_the_model_not_the_key(
         "vllm/gpt-oss-120b is not available for this API key"
         in result.response.speech["plain"]["speech"]
     )
+
+
+async def test_rejected_reasoning_switches_are_dropped_and_retried(
+    hass: HomeAssistant,
+    mock_openai: MagicMock,
+    mock_config_entry_with_conversation,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A model that answers the switches with 400 must still answer the user."""
+    await setup_integration(hass, mock_config_entry_with_conversation)
+    request = httpx.Request("POST", "https://ai.noris.de/v1/chat/completions")
+    seen: list[dict] = []
+
+    async def create(**kwargs):
+        seen.append(kwargs)
+        if "reasoning_effort" in kwargs or "extra_body" in kwargs:
+            raise BadRequestError(
+                "unknown parameter reasoning_effort",
+                response=httpx.Response(400, request=request),
+                body=None,
+            )
+
+        async def _gen() -> AsyncGenerator:
+            yield _chunk("Hallo!")
+            yield _chunk(None, finish="stop")
+
+        return _gen()
+
+    mock_openai.chat.completions.create = AsyncMock(side_effect=create)
+
+    result = await conversation.async_converse(
+        hass, "Hallo", None, Context(), agent_id=AGENT_ID
+    )
+
+    assert result.response.speech["plain"]["speech"] == "Hallo!"
+    assert len(seen) == 2
+    assert seen[0]["reasoning_effort"] == "low"
+    assert "reasoning_effort" not in seen[1]
+    assert "extra_body" not in seen[1]
+    assert "without the reasoning switches" in caplog.text

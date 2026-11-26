@@ -229,10 +229,14 @@ async def test_length_finish_without_output_raises(
         )
 
 
-async def test_bad_request_without_structure_does_not_retry(
+async def test_bad_request_without_structure_retries_only_without_switches(
     hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_ai_task
 ) -> None:
-    """A BadRequestError on a free-text task propagates without fallback retry."""
+    """A 400 on a free-text task gets one retry without the reasoning switches.
+
+    There is no schema fallback for free text, so a 400 that persists without
+    the switches is reported after exactly two requests.
+    """
     await setup_integration(hass, mock_config_entry_with_ai_task)
     response = MagicMock()
     response.status_code = 400
@@ -245,4 +249,48 @@ async def test_bad_request_without_structure_does_not_retry(
             hass, task_name="t", entity_id=ENTITY_ID, instructions="Sag was"
         )
 
-    assert mock_openai.chat.completions.create.await_count == 1
+    calls = mock_openai.chat.completions.create.await_args_list
+    assert len(calls) == 2
+    assert "reasoning_effort" in calls[0].kwargs
+    assert "reasoning_effort" not in calls[1].kwargs
+
+
+async def test_structured_task_survives_rejected_reasoning_switches(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_ai_task
+) -> None:
+    """A 400 caused by the reasoning switches must not be blamed on the schema.
+
+    The schema fallback runs first; when that is refused as well, the switches
+    are dropped and the request is sent once more.
+    """
+    await setup_integration(hass, mock_config_entry_with_ai_task)
+    response = MagicMock()
+    response.status_code = 400
+    seen: list[dict] = []
+
+    async def create(**kwargs):
+        seen.append(kwargs)
+        if "reasoning_effort" in kwargs:
+            raise BadRequestError(
+                message="unknown parameter reasoning_effort",
+                response=response,
+                body=None,
+            )
+        return _completion('{"name": "Flo"}')
+
+    mock_openai.chat.completions.create = AsyncMock(side_effect=create)
+
+    result = await ai_task.async_generate_data(
+        hass,
+        task_name="t",
+        entity_id=ENTITY_ID,
+        instructions="Extrahiere",
+        structure=vol.Schema({vol.Required("name"): str}),
+    )
+
+    assert result.data == {"name": "Flo"}
+    assert len(seen) == 3
+    assert "response_format" in seen[0]
+    assert "response_format" not in seen[1]
+    assert "reasoning_effort" in seen[1]
+    assert "reasoning_effort" not in seen[2]

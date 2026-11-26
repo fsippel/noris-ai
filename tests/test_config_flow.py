@@ -19,7 +19,7 @@ from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_MODEL, CON
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import CHAT_MODEL, setup_integration
+from .conftest import LEGACY_CHAT_MODEL, setup_integration
 
 
 async def test_user_flow_happy_path(
@@ -117,7 +117,7 @@ async def test_conversation_subentry_recommended(
         result["flow_id"],
         {
             CONF_NAME: "Mein Agent",
-            CONF_MODEL: CHAT_MODEL,
+            CONF_MODEL: LEGACY_CHAT_MODEL,
             CONF_LLM_HASS_API: ["assist"],
             CONF_RECOMMENDED: True,
         },
@@ -125,7 +125,7 @@ async def test_conversation_subentry_recommended(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Mein Agent"
     assert result["data"] == {
-        CONF_MODEL: CHAT_MODEL,
+        CONF_MODEL: LEGACY_CHAT_MODEL,
         CONF_LLM_HASS_API: ["assist"],
         CONF_RECOMMENDED: True,
     }
@@ -181,7 +181,7 @@ async def test_conversation_subentry_reconfigure(
         result["flow_id"],
         {
             CONF_NAME: "Agent",
-            CONF_MODEL: CHAT_MODEL,
+            CONF_MODEL: LEGACY_CHAT_MODEL,
             CONF_RECOMMENDED: True,
         },
     )
@@ -217,7 +217,7 @@ async def test_conversation_subentry_reconfigure_keeps_control_disabled(
         result["flow_id"],
         {
             CONF_NAME: "Agent ohne Kontrolle",
-            CONF_MODEL: CHAT_MODEL,
+            CONF_MODEL: LEGACY_CHAT_MODEL,
             CONF_LLM_HASS_API: [],
             CONF_RECOMMENDED: True,
         },
@@ -231,7 +231,7 @@ async def test_conversation_subentry_reconfigure_keeps_control_disabled(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_MODEL: CHAT_MODEL,
+            CONF_MODEL: LEGACY_CHAT_MODEL,
             CONF_LLM_HASS_API: [],
             CONF_RECOMMENDED: True,
         },
@@ -257,7 +257,7 @@ async def test_conversation_subentry_reconfigure_default_omits_llm_hass_api(
         result["flow_id"],
         {
             CONF_NAME: "Agent",
-            CONF_MODEL: CHAT_MODEL,
+            CONF_MODEL: LEGACY_CHAT_MODEL,
             CONF_LLM_HASS_API: [],
             CONF_RECOMMENDED: True,
         },
@@ -278,7 +278,7 @@ async def test_conversation_subentry_reconfigure_default_omits_llm_hass_api(
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
-            CONF_MODEL: CHAT_MODEL,
+            CONF_MODEL: LEGACY_CHAT_MODEL,
             CONF_RECOMMENDED: True,
         },
     )
@@ -303,13 +303,13 @@ async def test_ai_task_subentry_recommended(
         result["flow_id"],
         {
             CONF_NAME: "Meine Task",
-            CONF_MODEL: CHAT_MODEL,
+            CONF_MODEL: LEGACY_CHAT_MODEL,
             CONF_RECOMMENDED: True,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Meine Task"
-    assert result["data"] == {CONF_MODEL: CHAT_MODEL, CONF_RECOMMENDED: True}
+    assert result["data"] == {CONF_MODEL: LEGACY_CHAT_MODEL, CONF_RECOMMENDED: True}
 
 
 async def test_ai_task_subentry_advanced(
@@ -325,7 +325,7 @@ async def test_ai_task_subentry_advanced(
         result["flow_id"],
         {
             CONF_NAME: "Task",
-            CONF_MODEL: CHAT_MODEL,
+            CONF_MODEL: LEGACY_CHAT_MODEL,
             CONF_RECOMMENDED: False,
         },
     )
