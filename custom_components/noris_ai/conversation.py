@@ -40,6 +40,11 @@ class NorisAIConversationEntity(NorisAIEntity, conversation.ConversationEntity):
 
     _attr_name = None
     _recommended_max_tokens = RECOMMENDED_CONVERSATION_MAX_TOKENS
+    # The answer already reaches the chat log as a delta stream (see
+    # chat_log.async_add_delta_content_stream in entity.py). The flag only
+    # announces it: without it the Assist pipeline waits for the complete
+    # answer before it hands any text to a streaming text-to-speech engine.
+    _attr_supports_streaming = True
 
     def __init__(self, entry: NorisAIConfigEntry, subentry: ConfigSubentry) -> None:
         """Initialize the agent."""

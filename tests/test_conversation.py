@@ -139,3 +139,15 @@ async def test_broken_model_reports_friendly_error(
 
     assert result.response.response_type == intent.IntentResponseType.ERROR
     assert "not available" in result.response.speech["plain"]["speech"]
+
+
+async def test_agent_announces_streaming(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_conversation
+) -> None:
+    """The pipeline only streams text to TTS when the agent says it can."""
+    await setup_integration(hass, mock_config_entry_with_conversation)
+
+    info = conversation.async_get_agent_info(hass, AGENT_ID)
+
+    assert info is not None
+    assert info.supports_streaming is True
