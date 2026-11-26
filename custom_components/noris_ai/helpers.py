@@ -52,6 +52,8 @@ def model_not_allowed_message(model: str) -> str:
     Measured 2026-11-25: an invalid key is answered with 401, while an unknown,
     renamed or not-enabled model is answered with 403 ("Model ... is not
     allowed for virtual key ..."). Entering the same key again cannot fix a
-    403, so it must never lead into the reauth dialog.
+    403 on a request that names a model, so chat, transcription and speech
+    never answer it with the reauth dialog. Listing the models names no
+    model; a 403 there is still treated as a key problem.
     """
     return f"The model {model} is not available for this API key on ai.noris.de"
