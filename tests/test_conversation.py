@@ -8,6 +8,7 @@ from openai import APIStatusError
 import pytest
 import voluptuous as vol
 
+from custom_components.noris_ai.const import CONF_ENABLE_REASONING, CONF_RECOMMENDED
 from homeassistant.components import conversation
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import intent, llm
@@ -151,3 +152,41 @@ async def test_agent_announces_streaming(
 
     assert info is not None
     assert info.supports_streaming is True
+
+
+async def test_reasoning_off_sends_both_switches(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_conversation
+) -> None:
+    """Qwen obeys enable_thinking, gpt-oss and GLM obey reasoning_effort."""
+    await setup_integration(hass, mock_config_entry_with_conversation)
+    mock_openai.chat.completions.create = _stream_mock(
+        [_chunk("Hallo!"), _chunk(None, finish="stop")]
+    )
+
+    await conversation.async_converse(hass, "Hallo", None, Context(), agent_id=AGENT_ID)
+
+    kwargs = mock_openai.chat.completions.create.call_args.kwargs
+    assert kwargs["reasoning_effort"] == "low"
+    assert kwargs["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+async def test_reasoning_on_sends_neither_switch(
+    hass: HomeAssistant, mock_openai: MagicMock, mock_config_entry_with_conversation
+) -> None:
+    """With reasoning enabled the model keeps its own default."""
+    subentry = next(iter(mock_config_entry_with_conversation.subentries.values()))
+    hass.config_entries.async_update_subentry(
+        mock_config_entry_with_conversation,
+        subentry,
+        data={**subentry.data, CONF_RECOMMENDED: False, CONF_ENABLE_REASONING: True},
+    )
+    await setup_integration(hass, mock_config_entry_with_conversation)
+    mock_openai.chat.completions.create = _stream_mock(
+        [_chunk("Hallo!"), _chunk(None, finish="stop")]
+    )
+
+    await conversation.async_converse(hass, "Hallo", None, Context(), agent_id=AGENT_ID)
+
+    kwargs = mock_openai.chat.completions.create.call_args.kwargs
+    assert "reasoning_effort" not in kwargs
+    assert "extra_body" not in kwargs
