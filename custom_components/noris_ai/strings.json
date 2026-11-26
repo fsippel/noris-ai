@@ -44,7 +44,6 @@
             "recommended": "Recommended settings"
           },
           "data_description": {
-            "model": "Only vllm/* models run on-premises in the noris data center NBG6; Anthropic models are routed to an external provider.",
             "prompt": "Instruct how the LLM should respond. This can be a template.",
             "recommended": "Disable to configure token limit, temperature and top_p."
           }
@@ -82,7 +81,6 @@
             "recommended": "Recommended settings"
           },
           "data_description": {
-            "model": "Only vllm/* models run on-premises in the noris data center NBG6; Anthropic models are routed to an external provider.",
             "recommended": "Disable to configure token limit, temperature and top_p."
           }
         },

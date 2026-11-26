@@ -44,7 +44,6 @@
             "recommended": "Empfohlene Einstellungen"
           },
           "data_description": {
-            "model": "Nur vllm/*-Modelle laufen on-premises im noris-Rechenzentrum NBG6; Anthropic-Modelle werden an einen externen Anbieter geleitet.",
             "prompt": "Gib an, wie das LLM antworten soll. Dies kann ein Template sein.",
             "recommended": "Deaktivieren, um Token-Limit, Temperatur und Top-P anzupassen."
           }
@@ -82,7 +81,6 @@
             "recommended": "Empfohlene Einstellungen"
           },
           "data_description": {
-            "model": "Nur vllm/*-Modelle laufen on-premises im noris-Rechenzentrum NBG6; Anthropic-Modelle werden an einen externen Anbieter geleitet.",
             "recommended": "Deaktivieren, um Token-Limit, Temperatur und Top-P anzupassen."
           }
         },
