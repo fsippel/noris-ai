@@ -18,7 +18,7 @@ from custom_components.noris_ai.entity import (
 )
 from homeassistant.components import conversation
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import llm
+from homeassistant.helpers import llm, selector
 
 
 @pytest.mark.parametrize(
@@ -157,6 +157,42 @@ def test_format_structured_output_defaults_name() -> None:
     result = _format_structured_output("", vol.Schema({}))
 
     assert result["json_schema"]["name"] == "data"
+
+
+def test_format_structured_output_drops_unique_items() -> None:
+    """A multi-select field is sent without "uniqueItems".
+
+    Some gateway models answer that keyword with 400, which costs a second
+    request. A field that merely carries the keyword's name must survive.
+    """
+    multi = selector.SelectSelector(
+        selector.SelectSelectorConfig(options=["a", "b"], multiple=True)
+    )
+    structure = vol.Schema(
+        {
+            vol.Required("tags"): multi,
+            vol.Optional("uniqueItems"): selector.TextSelector(),
+            vol.Optional("nested"): selector.ObjectSelector(
+                {
+                    "fields": {
+                        "inner": {
+                            "selector": {"select": {"options": ["x"], "multiple": True}}
+                        }
+                    }
+                }
+            ),
+        }
+    )
+
+    schema = _format_structured_output("data", structure)["json_schema"]["schema"]
+
+    assert schema["properties"]["tags"] == {
+        "type": "array",
+        "items": {"type": "string", "enum": ["a", "b"]},
+    }
+    assert schema["properties"]["uniqueItems"] == {"type": "string"}
+    assert schema["required"] == ["tags"]
+    assert '"uniqueItems": true' not in json.dumps(schema)
 
 
 def test_failed_tool_result_is_flagged_as_error() -> None:
