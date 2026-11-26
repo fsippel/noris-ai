@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from openai.types import Model
 
-from custom_components.noris_ai.const import DEFAULT_MODEL
+from custom_components.noris_ai.const import PREFERRED_CHAT_MODELS
 from custom_components.noris_ai.models import (
     async_get_model_options,
     default_model,
@@ -58,26 +58,38 @@ def _options(*values: str) -> list[SelectOptionDict]:
     return [SelectOptionDict(value=value, label=value) for value in values]
 
 
-def test_default_model_prefers_exact_match() -> None:
+def test_default_model_follows_the_preference_order() -> None:
     options = _options(
-        "vllm/release/glm-5-2", DEFAULT_MODEL, "anthropic/claude-sonnet-5"
-    )
-    assert default_model(options) == DEFAULT_MODEL
-
-
-def test_default_model_matches_channel_prefixed_rename() -> None:
-    """Gateway renames like vllm/gpt-oss-120b -> vllm/release/gpt-oss-120b."""
-    options = _options(
-        "vllm/release/glm-5-2",
+        "vllm/release/glm-5-3",
+        "vllm/release/gemma-4-31b-it",
         "vllm/release/gpt-oss-120b",
-        "anthropic/claude-sonnet-5",
     )
-    assert default_model(options) == "vllm/release/gpt-oss-120b"
+    assert default_model(options) == "vllm/release/gemma-4-31b-it"
 
 
-def test_default_model_falls_back_to_first_onprem() -> None:
-    options = _options("vllm/release/glm-5-2", "anthropic/claude-sonnet-5")
+def test_default_model_takes_the_first_preference_when_present() -> None:
+    options = _options(*reversed(PREFERRED_CHAT_MODELS), "vllm/release/gpt-oss-120b")
+    assert default_model(options) == "vllm/release/qwen3.8-27b"
+
+
+def test_default_model_tolerates_a_rename_without_channel() -> None:
+    options = _options("vllm/gpt-oss-120b", "vllm/qwen3.8-27b")
+    assert default_model(options) == "vllm/qwen3.8-27b"
+
+
+def test_default_model_prefers_production_over_staging() -> None:
+    """A staging-only first choice loses to a later choice in production."""
+    options = _options("vllm/qsu/qwen3.8-27b", "vllm/release/glm-5-3")
+    assert default_model(options) == "vllm/release/glm-5-3"
+
+
+def test_default_model_falls_back_to_first_vllm() -> None:
+    options = _options("anthropic/claude-sonnet-5", "vllm/release/glm-5-2")
     assert default_model(options) == "vllm/release/glm-5-2"
+
+
+def test_default_model_never_prefers_the_deprecated_model() -> None:
+    assert not any("gpt-oss" in model for model in PREFERRED_CHAT_MODELS)
 
 
 def test_default_model_empty_list() -> None:

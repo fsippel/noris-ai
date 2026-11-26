@@ -13,7 +13,16 @@ LOGGER = logging.getLogger(__package__)
 # openai SDK works out of the box with ``api_key`` + ``base_url``.
 BASE_URL = "https://ai.noris.de/v1"
 
-DEFAULT_MODEL = "vllm/gpt-oss-120b"
+# Chat models offered as the pre-selected default, best first; the first one
+# the live catalog contains wins (see models.default_model). The order was set
+# by the maintainer on 2026-11-26. gpt-oss-120b used to be the fixed default; the
+# official model overview lists it as deprecated (end of life 2027-04-30), so
+# it is no longer preferred. Existing subentries keep whatever model they use.
+PREFERRED_CHAT_MODELS: tuple[str, ...] = (
+    "vllm/release/qwen3.8-27b",
+    "vllm/release/gemma-4-31b-it",
+    "vllm/release/glm-5-3",
+)
 
 CONF_RECOMMENDED = "recommended"
 CONF_MAX_TOKENS = "max_tokens"
